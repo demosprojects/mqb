@@ -1,3 +1,4 @@
+
 // === VARIABLES GLOBALES ===
 // Importar funciones de Firestore
 import { 
@@ -37,6 +38,7 @@ async function inicializarFirebase() {
     console.log("Firebase inicializado correctamente");
     await cargarDatosIniciales();
     await cargarTodosLosDatos();
+    console.log("✅ Inicialización completa. Productos en stock:", stock.length);
   } catch (error) {
     console.error("Error inicializando Firebase:", error);
     // Fallback a localStorage si Firebase falla
@@ -53,10 +55,10 @@ async function cargarDatosIniciales() {
       console.log("No hay productos en Firestore. El catálogo está vacío - el usuario puede agregar sus propios productos.");
       stock = [];
     } else {
-      // Limpiar todos los productos existentes para empezar desde cero
-      console.log("Limpiando productos existentes para empezar desde cero...");
-      await limpiarTodosLosProductos();
-      stock = [];
+      // Cargar productos existentes desde Firebase
+      console.log("Cargando productos existentes desde Firebase...");
+      stock = stockSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log("Productos cargados:", stock);
     }
   } catch (error) {
     console.error("Error cargando datos iniciales:", error);
@@ -183,7 +185,14 @@ async function eliminarProducto(index) {
 }
 
 function editarProducto(index) {
+  console.log("Editando producto en índice:", index);
   const producto = stock[index];
+  console.log("Producto a editar:", producto);
+  
+  if (!producto) {
+    alert("Error: No se encontró el producto a editar");
+    return;
+  }
   
   // Crear modal de edición
   const modal = document.createElement('div');
@@ -233,26 +242,57 @@ function editarProducto(index) {
     </div>
   `;
   
-  // Llenar formulario con datos actuales
-  document.getElementById('editCategoria').value = producto.categoria;
-  document.getElementById('editProducto').value = producto.producto;
-  document.getElementById('editUnidad').value = producto.unidad;
-  
   document.body.appendChild(modal);
   
+  // Llenar formulario con datos actuales DESPUÉS de agregar al DOM
+  setTimeout(() => {
+    const categoriaSelect = document.getElementById('editCategoria');
+    const productoInput = document.getElementById('editProducto');
+    const unidadSelect = document.getElementById('editUnidad');
+    
+    if (categoriaSelect && productoInput && unidadSelect) {
+      categoriaSelect.value = producto.categoria;
+      productoInput.value = producto.producto;
+      unidadSelect.value = producto.unidad;
+      console.log("Formulario llenado con datos:", { categoria: producto.categoria, producto: producto.producto, unidad: producto.unidad });
+    } else {
+      console.error("No se pudieron encontrar los elementos del formulario");
+    }
+  }, 100);
+  
   // Manejar envío del formulario
-  document.getElementById('formEditarProducto').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    await actualizarProducto(index, modal);
-  });
+  const form = document.getElementById('formEditarProducto');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      console.log("Formulario de edición enviado");
+      await actualizarProducto(index, modal);
+    });
+  } else {
+    console.error("No se pudo encontrar el formulario de edición");
+  }
 }
 
 async function actualizarProducto(index, modal) {
   try {
+    console.log("Actualizando producto en índice:", index);
     const producto = stock[index];
+    
+    if (!producto) {
+      alert("Error: No se encontró el producto a actualizar");
+      return;
+    }
+    
     const nuevaCategoria = document.getElementById('editCategoria').value;
     const nuevoProducto = document.getElementById('editProducto').value;
     const nuevaUnidad = document.getElementById('editUnidad').value;
+    
+    console.log("Datos a actualizar:", { nuevaCategoria, nuevoProducto, nuevaUnidad });
+    
+    if (!nuevaCategoria || !nuevoProducto || !nuevaUnidad) {
+      alert("Por favor completa todos los campos");
+      return;
+    }
     
     // Verificar si el nombre del producto ya existe (excluyendo el actual)
     const existe = stock.find((s, i) => i !== index && s.producto.toLowerCase() === nuevoProducto.toLowerCase());
@@ -268,11 +308,17 @@ async function actualizarProducto(index, modal) {
       timestamp: new Date().toISOString()
     };
     
+    console.log("Actualizando en Firebase...");
     if (producto.id) {
       await updateDoc(doc(window.db, "stock", producto.id), datosActualizados);
+      console.log("Producto actualizado en Firebase");
     }
     
+    // Actualizar array local
     stock[index] = { id: producto.id, ...datosActualizados };
+    console.log("Array local actualizado");
+    
+    // Actualizar interfaz
     renderListaProductos();
     cerrarModalEdicion();
     alert(`✅ Producto "${nuevoProducto}" actualizado correctamente`);
@@ -526,6 +572,9 @@ formStock.addEventListener("submit", async (e) => {
     
     // Agregar al array local
     stock.push({ id: docRef.id, ...nuevoProducto });
+    
+    // Actualizar la lista de productos
+    renderListaProductos();
     
     formStock.reset();
     alert("✅ Producto agregado al catálogo");
