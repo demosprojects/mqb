@@ -1,0 +1,123 @@
+Carne por unidad 
+Carne por hacer por kg
+Panes grandes por unidad 
+Panes chicos por unidad
+Panceta por unidad 
+Bolsas de pollo por unidad 
+Cheddar fetas por unidad 
+Chedar pouch por unidad 
+Queso Azul por peso
+Muzzarella por peso 
+Manteca por unidad
+Manteca por peso 
+Harina por peso
+Azúcar por peso
+Lavadura por peso
+Leche por unidad 
+Lechuga Repollada por unidad 
+Tomate por kg
+Palta por unidad 
+Palta por kg
+Cebolla morada por unidad
+cebolla morada por peso
+Huevos por unidad (Cantidad de maples)
+Pepino frasco por unidad
+Aceite por unidad 
+Mayonesa sachet por unidad
+Savora sachet por unidad
+Ketchup sachet por unidad
+Pote queso crema 300g por unidad
+Sal por peso 
+Lavandina por unidad 
+Líquido para piso por unidad 
+Detergente por unidad 
+Antigrasa repuesto por unidad 
+Limpiavidrios repuesto por unidad 
+Cif blanco por unidad 
+Gas por unidad 
+Bidón de agua por unidad 
+Broches para abrochadora por unidad 
+Guantes por unidad 
+Trapos por unidad 
+Rejilla por unidad 
+Virulana por unidad 
+Esponja de acero por unidad 
+Cebolla Caramelizada por peso
+Mayonesa MQB por peso
+Mayonesa De Palta por peso
+
+
+
+
+Stock por categoria
+
+*Preparados*
+Preparado de tomate
+Cebolla Caramelizada
+Mayonesa De Palta
+Mayonesa MQB
+
+*Verduras*
+Lechuga Repollada
+Cebolla morada 
+Palta
+Tomate perita 
+
+*Quesos*
+Cheddar fetas
+Cheddar Puch
+Queso azul 
+Muzzarella
+
+*Paquetes*(?) no se que nombre ponerle
+Pote de queso crema
+Sachet de Mayonesa 950g
+Sachet de ketchup
+Sachet de Savora 
+Aceite 
+
+Condimentos/Ingredientes
+Comino
+Pimienta negra
+Pimentón
+Ajo en polvo
+Provenzal
+Sal
+Azúcar 
+Levadura
+Manteca 
+Harina 
+Leche 
+
+Accesorios
+Guantes 
+Broches para abrochadora 
+
+
+Botiquín 
+Platsul 
+Gasas 
+Curitas
+Pervinox
+Analgésicos 
+
+Limpieza 
+Lavandina 
+Detergente
+Líquido para piso 
+Antigrasa 
+Limpia vidrios
+Esponja amarilla
+Esponja de acero
+Virulana 
+
+General
+Carnes armadas
+Carnes por hacer 
+Bolsas de pollo de kg
+Panes grandes 
+Panes chicos
+
+
+Gas 
+Bidón de agua
