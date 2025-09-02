@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Sistema de Stock MQB</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBvW_UJTtvtdceRiwLJhd9s5w7JSKbmcwU",
+      authDomain: "stock-inicial.firebaseapp.com",
+      projectId: "stock-inicial",
+      storageBucket: "stock-inicial.firebasestorage.app",
+      messagingSenderId: "673017546542",
+      appId: "1:673017546542:web:2b274d17d09f6553d75cbf"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Hacer disponible globalmente
+    window.auth = auth;
+    window.db = db;
+    window.firebaseApp = app;
+  </script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#10B981',
+            accent: '#F59E0B',
+            danger: '#EF4444',
+            warning: '#F97316'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Estilos personalizados adicionales */
+    .gradient-bg {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card-shadow {
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+  <!-- Contenedor principal -->
+  <div class="w-full max-w-md mx-auto px-4">
+    <!-- Header -->
+    <div class="gradient-bg text-white py-8 px-6 rounded-t-xl card-shadow text-center">
+      <h1 class="text-3xl font-bold">📦 Sistema de Stock - MQB</h1>
+      <p class="text-blue-100 mt-2">Acceso al Sistema</p>
+    </div>
+
+    <!-- Formulario de Login -->
+    <div class="bg-white rounded-b-xl card-shadow p-8">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span class="text-blue-600 text-2xl">🔐</span>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800">Iniciar Sesión</h2>
+        <p class="text-gray-600 mt-2">Ingresa tu correo y contraseña para continuar</p>
+      </div>
+
+      <form id="loginForm" class="space-y-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Correo Electrónico</label>
+          <input type="email" id="email" placeholder="tu@email.com" required 
+                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
+          <input type="password" id="password" placeholder="Ingresa tu contraseña" required 
+                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg">
+        </div>
+
+        <button type="submit" id="btnLogin" 
+                class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium text-lg">
+          🚀 Ingresar al Sistema
+        </button>
+      </form>
+
+      <!-- Mensaje de error -->
+      <div id="errorMessage" class="hidden mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div class="flex items-center">
+          <span class="text-red-600 mr-2">❌</span>
+          <span class="text-red-700 text-sm" id="errorText"></span>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loadingMessage" class="hidden mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div class="flex items-center">
+          <span class="text-blue-600 mr-2">⏳</span>
+          <span class="text-blue-700 text-sm">Verificando acceso...</span>
+        </div>
+      </div>
+
+      <!-- Información adicional -->
+      <div class="mt-8 pt-6 border-t border-gray-200">
+        <div class="text-center">
+          <p class="text-xs text-gray-500">
+            Sistema de Gestión de Stock y Tareas<br>
+            Versión 1.0 - MQB
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>
