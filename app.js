@@ -19,6 +19,7 @@ import {
 let stock = [];
 let conteoInicial = [];
 let conteoFinal = [];
+let faltantes = [];
 let pendientes = [];
 let tareas = [];
 let historial = [];
@@ -92,6 +93,11 @@ async function cargarTodosLosDatos() {
     const conteoFinalSnapshot = await getDocs(conteoFinalRef);
     conteoFinal = conteoFinalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
+    // Cargar faltantes
+    const faltantesRef = collection(window.db, "faltantes");
+    const faltantesSnapshot = await getDocs(faltantesRef);
+    faltantes = faltantesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
     // Cargar pendientes
     const pendientesRef = collection(window.db, "pendientes");
     const pendientesSnapshot = await getDocs(pendientesRef);
@@ -107,7 +113,7 @@ async function cargarTodosLosDatos() {
     const historialSnapshot = await getDocs(historialRef);
     historial = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
-    console.log("Datos cargados desde Firebase:", { stock, conteoInicial, conteoFinal, pendientes, tareas, historial });
+    console.log("Datos cargados desde Firebase:", { stock, conteoInicial, conteoFinal, faltantes, pendientes, tareas, historial });
     
     // Actualizar la interfaz
     actualizarInterfaz();
@@ -122,6 +128,7 @@ function cargarDesdeLocalStorage() {
   stock = JSON.parse(localStorage.getItem("stock")) || [];
   conteoInicial = JSON.parse(localStorage.getItem("conteoInicial")) || [];
   conteoFinal = JSON.parse(localStorage.getItem("conteoFinal")) || [];
+  faltantes = JSON.parse(localStorage.getItem("faltantes")) || [];
   pendientes = JSON.parse(localStorage.getItem("pendientes")) || [];
   tareas = JSON.parse(localStorage.getItem("tareas")) || [];
   historial = JSON.parse(localStorage.getItem("historial")) || [];
@@ -131,6 +138,7 @@ function cargarDesdeLocalStorage() {
 function actualizarInterfaz() {
   renderConteoInicial();
   renderConteoFinal();
+  renderFaltantes();
   renderPendientes();
   renderTareas();
   renderListaProductos();
@@ -139,6 +147,7 @@ function actualizarInterfaz() {
 // === FUNCIÓN PARA RENDERIZAR LISTA DE PRODUCTOS ===
 function renderListaProductos() {
   const listaProductos = document.getElementById("listaProductos");
+  const buscador = document.getElementById("buscadorProductos");
   if (!listaProductos) return;
   
   if (stock.length === 0) {
@@ -146,8 +155,26 @@ function renderListaProductos() {
     return;
   }
   
+  // Obtener término de búsqueda
+  const terminoBusqueda = buscador ? buscador.value.toLowerCase() : "";
+  
+  // Filtrar productos
+  const productosFiltrados = stock.filter(producto => 
+    producto.producto.toLowerCase().includes(terminoBusqueda) ||
+    producto.categoria.toLowerCase().includes(terminoBusqueda) ||
+    producto.unidad.toLowerCase().includes(terminoBusqueda)
+  );
+  
+  if (productosFiltrados.length === 0 && terminoBusqueda) {
+    listaProductos.innerHTML = '<p class="text-gray-500 text-sm">No se encontraron productos que coincidan con la búsqueda</p>';
+    return;
+  }
+  
   let html = "";
-  stock.forEach((producto, i) => {
+  productosFiltrados.forEach((producto, i) => {
+    // Encontrar el índice real en el array original
+    const indiceReal = stock.findIndex(p => p.id === producto.id);
+    
     html += `
       <div class="bg-white border border-gray-200 rounded-lg p-3 flex justify-between items-center">
         <div class="flex-1">
@@ -155,8 +182,8 @@ function renderListaProductos() {
           <span class="text-sm text-gray-500 ml-2">(${producto.categoria} - ${producto.unidad})</span>
         </div>
         <div class="flex gap-2">
-          <button onclick="editarProducto(${i})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">✏️</button>
-          <button onclick="eliminarProducto(${i})" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">🗑️</button>
+          <button onclick="editarProducto(${indiceReal})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">✏️</button>
+          <button onclick="eliminarProducto(${indiceReal})" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">🗑️</button>
         </div>
       </div>`;
   });
@@ -345,13 +372,16 @@ window.agregarConteoInicial = agregarConteoInicial;
 window.agregarConteoFinal = agregarConteoFinal;
 window.eliminarConteoInicial = eliminarConteoInicial;
 window.eliminarConteoFinal = eliminarConteoFinal;
-window.eliminarPendiente = eliminarPendiente;
+window.marcarFaltanteCompletado = marcarFaltanteCompletado;
+window.marcarPendienteCompletado = marcarPendienteCompletado;
 window.completarTarea = completarTarea;
 window.eliminarTarea = eliminarTarea;
 window.abrirModalHistorial = abrirModalHistorial;
 window.cerrarModalHistorial = cerrarModalHistorial;
 window.mostrarHistorialFecha = mostrarHistorialFecha;
+window.eliminarDiaHistorial = eliminarDiaHistorial;
 window.finalizarDia = finalizarDia;
+window.cerrarSesion = cerrarSesion;
 
 // === FUNCIONES PARA MOSTRAR PRODUCTOS POR CATEGORÍA ===
 function mostrarProductosCategoria() {
@@ -692,11 +722,16 @@ function renderPendientes() {
   listaPendientes.innerHTML = "";
   pendientes.forEach((p, i) => {
     const descripcion = p.descripcion || p; // Compatibilidad con datos antiguos
+    const completado = p.completado || false;
+    const estiloCompletado = completado ? "line-through text-gray-500 bg-gray-100" : "";
+    
     listaPendientes.innerHTML += `
       <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
         <div class="flex justify-between items-center">
-          <div>${descripcion}</div>
-          <button onclick="eliminarPendiente(${i})" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">✔️</button>
+          <div class="${estiloCompletado}">${descripcion}</div>
+          <button onclick="marcarPendienteCompletado(${i})" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+            ${completado ? '↩️' : '✔️'}
+          </button>
         </div>
       </div>`;
   });
@@ -722,17 +757,95 @@ formPendientes.addEventListener("submit", async (e) => {
   }
 });
 
-async function eliminarPendiente(i) {
+async function marcarPendienteCompletado(i) {
   try {
     const item = pendientes[i];
+    const nuevoEstado = !item.completado;
+    
+    const datosActualizados = {
+      ...item,
+      completado: nuevoEstado,
+      timestamp: new Date().toISOString()
+    };
+    
     if (item.id) {
-      await deleteDoc(doc(window.db, "pendientes", item.id));
+      await updateDoc(doc(window.db, "pendientes", item.id), datosActualizados);
     }
-    pendientes.splice(i, 1);
+    
+    pendientes[i] = datosActualizados;
     renderPendientes();
   } catch (error) {
-    console.error("Error eliminando pendiente:", error);
-    alert("Error al eliminar el pendiente. Intenta nuevamente.");
+    console.error("Error marcando pendiente:", error);
+    alert("Error al marcar el pendiente. Intenta nuevamente.");
+  }
+}
+
+// === FALTANTES ===
+const formFaltantes = document.getElementById("formFaltantes");
+const listaFaltantes = document.getElementById("listaFaltantes");
+
+function renderFaltantes() {
+  listaFaltantes.innerHTML = "";
+  faltantes.forEach((f, i) => {
+    const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+    const completado = f.completado || false;
+    const estiloCompletado = completado ? "line-through text-gray-500 bg-gray-100" : "";
+    
+    listaFaltantes.innerHTML += `
+      <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-3">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center">
+            <span class="text-red-600 mr-2">⚠️</span>
+            <div class="${estiloCompletado}">${descripcion}</div>
+          </div>
+          <button onclick="marcarFaltanteCompletado(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
+            ${completado ? '↩️' : '✔️'}
+          </button>
+        </div>
+      </div>`;
+  });
+}
+
+formFaltantes.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  
+  try {
+    const nuevoFaltante = {
+      descripcion: faltante.value,
+      fecha: new Date().toLocaleDateString(),
+      timestamp: new Date().toISOString()
+    };
+
+    const docRef = await addDoc(collection(window.db, "faltantes"), nuevoFaltante);
+    faltantes.push({ id: docRef.id, ...nuevoFaltante });
+    renderFaltantes();
+    formFaltantes.reset();
+  } catch (error) {
+    console.error("Error agregando faltante:", error);
+    alert("Error al agregar el faltante. Intenta nuevamente.");
+  }
+});
+
+async function marcarFaltanteCompletado(i) {
+  try {
+    const item = faltantes[i];
+    const nuevoEstado = !item.completado;
+    
+    const datosActualizados = {
+      ...item,
+      completado: nuevoEstado,
+      timestamp: new Date().toISOString()
+    };
+    
+    if (item.id) {
+      await updateDoc(doc(window.db, "faltantes", item.id), datosActualizados);
+    }
+    
+    faltantes[i] = datosActualizados;
+    renderFaltantes();
+  } catch (error) {
+    console.error("Error marcando faltante:", error);
+    alert("Error al marcar el faltante. Intenta nuevamente.");
   }
 }
 
@@ -821,6 +934,7 @@ async function finalizarDia() {
       timestamp: new Date().toISOString(),
       conteoInicial: [...conteoInicial],
       conteoFinal: [...conteoFinal],
+      faltantes: [...faltantes],
       pendientes: [...pendientes],
       tareas: [...tareas],
       resumen: generarResumenTexto()
@@ -875,6 +989,13 @@ async function limpiarDatosDelDia() {
       }
     }
     
+    // Eliminar faltantes
+    for (const item of faltantes) {
+      if (item.id) {
+        await deleteDoc(doc(window.db, "faltantes", item.id));
+      }
+    }
+    
     // Eliminar pendientes
     for (const item of pendientes) {
       if (item.id) {
@@ -892,6 +1013,7 @@ async function limpiarDatosDelDia() {
     // Limpiar arrays locales
     conteoInicial = [];
     conteoFinal = [];
+    faltantes = [];
     pendientes = [];
     tareas = [];
   } catch (error) {
@@ -901,7 +1023,7 @@ async function limpiarDatosDelDia() {
 
 function generarResumenTexto() {
   let fecha = new Date().toLocaleDateString();
-  let mensaje = `📋 RESUMEN DEL DÍA - ${fecha}\n`;
+  let mensaje = `📋 RESUMEN COMPLETO DEL DÍA - ${fecha}\n`;
   mensaje += "=".repeat(50) + "\n\n";
 
   // STOCK INICIAL
@@ -943,6 +1065,17 @@ function generarResumenTexto() {
     });
   }
 
+  // FALTANTES
+  mensaje += "\n⚠️ FALTANTES DEL DÍA:\n";
+  if (faltantes.length === 0) {
+    mensaje += "- No hay faltantes registrados\n";
+  } else {
+    faltantes.forEach(f => {
+      const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+      mensaje += `  • ${descripcion}\n`;
+    });
+  }
+
   // PENDIENTES
   mensaje += "\n📝 PENDIENTES PARA MAÑANA:\n";
   if (pendientes.length === 0) {
@@ -961,6 +1094,62 @@ function generarResumenTexto() {
   } else {
     tareas.forEach(t => {
       mensaje += `  • ${t.fecha}: ${t.tarea} (Encargado: ${t.encargado})\n`;
+    });
+  }
+
+  mensaje += "\n" + "=".repeat(50) + "\n";
+  return mensaje;
+}
+
+function generarResumenResumido() {
+  let fecha = new Date().toLocaleDateString();
+  let mensaje = `📊 RESUMEN RESUMIDO DEL DÍA - ${fecha}\n`;
+  mensaje += "=".repeat(50) + "\n\n";
+
+  // STOCK INICIAL
+  mensaje += "🌅 STOCK INICIAL:\n";
+  if (conteoInicial.length === 0) {
+    mensaje += "- Sin conteo inicial\n";
+  } else {
+    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
+    categorias.forEach(cat => {
+      let items = conteoInicial.filter(c => c.categoria === cat);
+      if (items.length > 0) {
+        mensaje += `\n${cat}:\n`;
+        items.forEach(item => {
+          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad}\n`;
+        });
+      }
+    });
+  }
+
+  // STOCK FINAL
+  mensaje += "\n🌙 STOCK FINAL:\n";
+  if (conteoFinal.length === 0) {
+    mensaje += "- Sin conteo final\n";
+  } else {
+    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
+    categorias.forEach(cat => {
+      let items = conteoFinal.filter(c => c.categoria === cat);
+      if (items.length > 0) {
+        mensaje += `\n${cat}:\n`;
+        items.forEach(item => {
+          let inicial = conteoInicial.find(c => c.producto === item.producto);
+          let usado = inicial ? inicial.cantidad - item.cantidad : 0;
+          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad} (usado: ${usado})\n`;
+        });
+      }
+    });
+  }
+
+  // FALTANTES
+  mensaje += "\n⚠️ FALTANTES:\n";
+  if (faltantes.length === 0) {
+    mensaje += "- Sin faltantes\n";
+  } else {
+    faltantes.forEach(f => {
+      const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+      mensaje += `  • ${descripcion}\n`;
     });
   }
 
@@ -989,6 +1178,45 @@ function abrirModalHistorial() {
 function cerrarModalHistorial() {
   const modal = document.getElementById("modalHistorial");
   modal.classList.add("hidden");
+}
+
+async function eliminarDiaHistorial() {
+  const selectorFecha = document.getElementById("selectorFecha");
+  const fechaSeleccionada = selectorFecha.value;
+  
+  if (!fechaSeleccionada) {
+    alert("Por favor selecciona una fecha para eliminar");
+    return;
+  }
+  
+  if (!confirm(`¿Estás seguro de que quieres eliminar el día ${fechaSeleccionada} del historial? Esta acción no se puede deshacer.`)) {
+    return;
+  }
+  
+  try {
+    const registro = historial.find(h => h.fecha === fechaSeleccionada);
+    if (registro && registro.id) {
+      await deleteDoc(doc(window.db, "historial", registro.id));
+      historial = historial.filter(h => h.fecha !== fechaSeleccionada);
+      
+      // Actualizar el selector
+      const option = selectorFecha.querySelector(`option[value="${fechaSeleccionada}"]`);
+      if (option) {
+        option.remove();
+      }
+      
+      // Limpiar contenido
+      document.getElementById("contenidoHistorial").innerHTML = '<p class="text-gray-500 text-center py-8">Selecciona una fecha para ver el historial</p>';
+      selectorFecha.value = "";
+      
+      alert(`✅ Día ${fechaSeleccionada} eliminado del historial`);
+    } else {
+      alert("No se encontró el registro para eliminar");
+    }
+  } catch (error) {
+    console.error("Error eliminando día del historial:", error);
+    alert("Error al eliminar el día del historial. Intenta nuevamente.");
+  }
 }
 
 function mostrarHistorialFecha(fecha) {
@@ -1054,6 +1282,22 @@ function mostrarHistorialFecha(fecha) {
   }
   html += '</div>';
 
+  // FALTANTES
+  html += `<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+    <h4 class="font-bold text-red-800 mb-2">⚠️ Faltantes</h4>`;
+  
+  if (registro.faltantes && registro.faltantes.length === 0) {
+    html += '<p class="text-gray-600">No hay faltantes registrados</p>';
+  } else if (registro.faltantes) {
+    registro.faltantes.forEach(f => {
+      const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+      html += `<div class="text-sm">• ${descripcion}</div>`;
+    });
+  } else {
+    html += '<p class="text-gray-600">No hay faltantes registrados</p>';
+  }
+  html += '</div>';
+
   // PENDIENTES
   html += `<div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
     <h4 class="font-bold text-purple-800 mb-2">📝 Pendientes</h4>`;
@@ -1091,78 +1335,18 @@ function mostrarHistorialFecha(fecha) {
 }
 
 // === RESUMEN FINAL ===
-const btnResumen = document.getElementById("btnResumen");
+const btnResumenCompleto = document.getElementById("btnResumenCompleto");
+const btnResumenResumido = document.getElementById("btnResumenResumido");
 const btnCopiar = document.getElementById("btnCopiar");
 const resumenFinal = document.getElementById("resumenFinal");
 
-btnResumen.addEventListener("click", () => {
-  let fecha = new Date().toLocaleDateString();
-  let mensaje = `📋 RESUMEN DEL DÍA - ${fecha}\n`;
-  mensaje += "=".repeat(50) + "\n\n";
+btnResumenCompleto.addEventListener("click", () => {
+  const mensaje = generarResumenTexto();
+  resumenFinal.value = mensaje;
+});
 
-  // STOCK INICIAL
-  mensaje += "🌅 STOCK INICIAL DEL DÍA:\n";
-  if (conteoInicial.length === 0) {
-    mensaje += "- No hay conteo inicial registrado\n";
-  } else {
-    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
-    categorias.forEach(cat => {
-      let items = conteoInicial.filter(c => c.categoria === cat);
-      if (items.length > 0) {
-        mensaje += `\n${cat}:\n`;
-        items.forEach(item => {
-          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad}\n`;
-        });
-      }
-    });
-  }
-
-  // STOCK FINAL Y USO
-  mensaje += "\n🌙 STOCK FINAL Y USO DEL DÍA:\n";
-  if (conteoFinal.length === 0) {
-    mensaje += "- No hay conteo final registrado\n";
-  } else {
-    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
-    categorias.forEach(cat => {
-      let items = conteoFinal.filter(c => c.categoria === cat);
-      if (items.length > 0) {
-        mensaje += `\n${cat}:\n`;
-        items.forEach(item => {
-          let inicial = conteoInicial.find(c => c.producto === item.producto);
-          let usado = inicial ? inicial.cantidad - item.cantidad : 0;
-          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad} (usado: ${usado})\n`;
-          if (item.observacion) {
-            mensaje += `    Obs: ${item.observacion}\n`;
-          }
-        });
-      }
-    });
-  }
-
-  // PENDIENTES
-  mensaje += "\n📝 PENDIENTES PARA MAÑANA:\n";
-  if (pendientes.length === 0) {
-    mensaje += "- No hay pendientes registrados\n";
-  } else {
-    pendientes.forEach(p => {
-      const descripcion = p.descripcion || p; // Compatibilidad con datos antiguos
-      mensaje += `  • ${descripcion}\n`;
-    });
-  }
-
-  // TAREAS
-  mensaje += "\n🔄 TAREAS ROTATIVAS:\n";
-  if (tareas.length === 0) {
-    mensaje += "- No hay tareas asignadas\n";
-  } else {
-    tareas.forEach(t => {
-      mensaje += `  • ${t.fecha}: ${t.tarea} (Encargado: ${t.encargado})\n`;
-    });
-  }
-
-  mensaje += "\n" + "=".repeat(50) + "\n";
- 
-
+btnResumenResumido.addEventListener("click", () => {
+  const mensaje = generarResumenResumido();
   resumenFinal.value = mensaje;
 });
 
@@ -1175,12 +1359,14 @@ btnCopiar.addEventListener("click", () => {
 // === EVENT LISTENERS PARA HISTORIAL Y FINALIZACIÓN ===
 const btnConsultarHistorial = document.getElementById("btnConsultarHistorial");
 const btnFinalizarDia = document.getElementById("btnFinalizarDia");
+const btnEliminarDia = document.getElementById("btnEliminarDia");
 const modalHistorial = document.getElementById("modalHistorial");
 const cerrarModal = document.getElementById("cerrarModal");
 const selectorFecha = document.getElementById("selectorFecha");
 
 btnConsultarHistorial.addEventListener("click", abrirModalHistorial);
 btnFinalizarDia.addEventListener("click", finalizarDia);
+btnEliminarDia.addEventListener("click", eliminarDiaHistorial);
 
 cerrarModal.addEventListener("click", cerrarModalHistorial);
 
@@ -1214,22 +1400,77 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  
+  // Buscador de productos
+  const buscadorProductos = document.getElementById('buscadorProductos');
+  if (buscadorProductos) {
+    buscadorProductos.addEventListener('input', () => {
+      renderListaProductos();
+    });
+  }
 });
+
+// === VERIFICACIÓN DE AUTENTICACIÓN ===
+function verificarAutenticacion() {
+  const autenticado = localStorage.getItem("mqb_authenticated");
+  const timestamp = localStorage.getItem("mqb_auth_timestamp");
+  const userUid = localStorage.getItem("mqb_user_uid");
+  
+  if (autenticado !== "true" || !timestamp || !userUid) {
+    window.location.href = "login.html";
+    return false;
+  }
+  
+  // Verificar si la sesión no ha expirado (24 horas)
+  const tiempoTranscurrido = Date.now() - parseInt(timestamp);
+  const veinticuatroHoras = 24 * 60 * 60 * 1000;
+  
+  if (tiempoTranscurrido >= veinticuatroHoras) {
+    localStorage.removeItem("mqb_authenticated");
+    localStorage.removeItem("mqb_auth_timestamp");
+    localStorage.removeItem("mqb_user_uid");
+    window.location.href = "login.html";
+    return false;
+  }
+  
+  return true;
+}
+
+// === FUNCIÓN PARA CERRAR SESIÓN ===
+function cerrarSesion() {
+  localStorage.removeItem("mqb_authenticated");
+  localStorage.removeItem("mqb_auth_timestamp");
+  localStorage.removeItem("mqb_user_uid");
+  
+  // Cerrar sesión de Firebase si está disponible
+  if (window.auth) {
+    window.auth.signOut();
+  }
+  
+  // Redirigir al login
+  window.location.href = "login.html";
+}
 
 // === INICIALIZACIÓN ===
-actualizarFechaActual();
+// Verificar autenticación antes de continuar
+if (!verificarAutenticacion()) {
+  // Si no está autenticado, la redirección ya se hizo
+  // No ejecutar el resto del código
+} else {
+  actualizarFechaActual();
 
-// Inicializar Firebase cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', async () => {
-  await inicializarFirebase();
-});
-
-// Fallback para navegadores que no soportan DOMContentLoaded
-if (document.readyState === 'loading') {
+  // Inicializar Firebase cuando el DOM esté listo
   document.addEventListener('DOMContentLoaded', async () => {
     await inicializarFirebase();
   });
-} else {
-  // DOM ya está listo
-  inicializarFirebase();
+
+  // Fallback para navegadores que no soportan DOMContentLoaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', async () => {
+      await inicializarFirebase();
+    });
+  } else {
+    // DOM ya está listo
+    inicializarFirebase();
+  }
 }
