@@ -1,4 +1,3 @@
-
 // === VARIABLES GLOBALES ===
 // Importar funciones de Firestore
 import { 
@@ -24,6 +23,8 @@ let pendientes = [];
 let tareas = [];
 let historial = [];
 let diaActual = new Date().toLocaleDateString();
+// Observaciones privadas (persisten y no están ligadas al día)
+let observacionesPrivadas = "";
 
 // Datos por defecto para stock inicial - VACÍO para que el usuario cargue sus propios productos
 const stockInicial = [];
@@ -113,6 +114,9 @@ async function cargarTodosLosDatos() {
     const historialSnapshot = await getDocs(historialRef);
     historial = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
+    // Cargar observaciones privadas persistentes
+    await cargarObservacionesPrivadas();
+    
     console.log("Datos cargados desde Firebase:", { stock, conteoInicial, conteoFinal, faltantes, pendientes, tareas, historial });
     
     // Actualizar la interfaz
@@ -142,6 +146,73 @@ function actualizarInterfaz() {
   renderPendientes();
   renderTareas();
   renderListaProductos();
+}
+
+function abrirModalHistorialTareas() {
+  if (!modalHistorialTareas || !selectorFechaTareas) return;
+  // Preparar selector de fechas (incluir hoy y las fechas del historial)
+  selectorFechaTareas.innerHTML = '<option value="">Seleccionar fecha...</option>';
+  const fechasSet = new Set();
+  // Fechas del historial
+  historial.forEach(h => { if (h.fecha) fechasSet.add(h.fecha); });
+  // Incluir hoy
+  fechasSet.add(diaActual);
+  // Ordenar fechas (asumiendo formato local, mostramos como vienen)
+  Array.from(fechasSet).forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f; selectorFechaTareas.appendChild(opt);
+  });
+  modalHistorialTareas.classList.remove('hidden');
+}
+
+function cerrarModalHistorialTareas() {
+  if (!modalHistorialTareas) return;
+  modalHistorialTareas.classList.add('hidden');
+}
+
+function renderHistorialTareasFecha(fecha, filtroTexto = '') {
+  if (!contenidoHistorialTareas) return;
+  const filtro = (filtroTexto || '').toLowerCase();
+  let tareasDeFecha = [];
+
+  if (fecha === diaActual) {
+    tareasDeFecha = [...tareas];
+  } else {
+    const registro = historial.find(h => h.fecha === fecha);
+    if (registro && Array.isArray(registro.tareas)) {
+      tareasDeFecha = [...registro.tareas];
+    }
+  }
+
+  if (!tareasDeFecha || tareasDeFecha.length === 0) {
+    contenidoHistorialTareas.innerHTML = '<p class="text-gray-500 text-center py-8">No hay tareas para esta fecha</p>';
+    return;
+  }
+
+  // Filtrar por texto
+  const filtradas = tareasDeFecha.filter(t => {
+    const texto = `${t.tarea || ''} ${t.encargado || ''} ${t.fecha || ''}`.toLowerCase();
+    return texto.includes(filtro);
+  });
+
+  if (filtradas.length === 0) {
+    contenidoHistorialTareas.innerHTML = '<p class="text-gray-500 text-center py-8">Sin coincidencias para la búsqueda</p>';
+    return;
+  }
+
+  let html = '';
+  filtradas.forEach(t => {
+    html += `
+      <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+        <div class="flex justify-between items-center">
+          <div class="${t.completa ? 'line-through text-gray-500' : ''}">
+            <strong>${t.tarea || ''}</strong><br>
+            <small>Fecha: ${t.fecha || ''} | Encargado: ${t.encargado || ''}</small>
+          </div>
+        </div>
+      </div>`;
+  });
+  contenidoHistorialTareas.innerHTML = html;
 }
 
 // === FUNCIÓN PARA RENDERIZAR LISTA DE PRODUCTOS ===
@@ -382,6 +453,13 @@ window.mostrarHistorialFecha = mostrarHistorialFecha;
 window.eliminarDiaHistorial = eliminarDiaHistorial;
 window.finalizarDia = finalizarDia;
 window.cerrarSesion = cerrarSesion;
+// Nuevas funciones expuestas
+window.limpiarPendientesYFaltantesYVolver = limpiarPendientesYFaltantesYVolver;
+window.abrirModalObservacionesPrivadas = abrirModalObservacionesPrivadas;
+window.cerrarModalObservacionesPrivadas = cerrarModalObservacionesPrivadas;
+window.abrirModalHistorialTareas = abrirModalHistorialTareas;
+window.cerrarModalHistorialTareas = cerrarModalHistorialTareas;
+window.renderHistorialTareasFecha = renderHistorialTareasFecha;
 
 // === FUNCIONES PARA MOSTRAR PRODUCTOS POR CATEGORÍA ===
 function mostrarProductosCategoria() {
@@ -856,15 +934,17 @@ const listaTareas = document.getElementById("listaTareas");
 function renderTareas() {
   listaTareas.innerHTML = "";
   tareas.forEach((t, i) => {
+    const completada = !!t.completa;
+    const estiloCompletado = completada ? "line-through text-gray-500 bg-gray-100" : "";
     listaTareas.innerHTML += `
       <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-3">
         <div class="flex justify-between items-center">
-          <div>
+          <div class="${estiloCompletado}">
             <strong>${t.tarea}</strong><br>
             <small>Fecha: ${t.fecha} | Encargado: ${t.encargado}</small>
           </div>
           <div class="flex gap-2">
-            <button onclick="completarTarea(${i})" class="bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium">✅</button>
+            <button onclick="completarTarea(${i})" class="bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium">${completada ? '↩️' : '✅'}</button>
             <button onclick="eliminarTarea(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
           </div>
         </div>
@@ -894,9 +974,20 @@ formTareas.addEventListener("submit", async (e) => {
   }
 });
 
-function completarTarea(i) {
-  alert("Tarea completada: " + tareas[i].tarea);
-  eliminarTarea(i);
+async function completarTarea(i) {
+  try {
+    const item = tareas[i];
+    const nuevoEstado = !item.completa;
+    const datosActualizados = { ...item, completa: nuevoEstado, timestamp: new Date().toISOString() };
+    if (item.id) {
+      await updateDoc(doc(window.db, "tareas", item.id), datosActualizados);
+    }
+    tareas[i] = datosActualizados;
+    renderTareas();
+  } catch (error) {
+    console.error("Error marcando tarea como completada:", error);
+    alert("Error al marcar la tarea. Intenta nuevamente.");
+  }
 }
 
 async function eliminarTarea(i) {
@@ -939,6 +1030,8 @@ async function finalizarDia() {
       tareas: [...tareas],
       resumen: generarResumenTexto()
     };
+
+    // No incluir observaciones privadas en el historial del día
 
     // Verificar si ya existe un registro para hoy
     const existente = historial.find(h => h.fecha === diaActual);
@@ -1097,6 +1190,8 @@ function generarResumenTexto() {
     });
   }
 
+  // (Privado) No incluir observaciones privadas
+
   mensaje += "\n" + "=".repeat(50) + "\n";
   return mensaje;
 }
@@ -1152,6 +1247,8 @@ function generarResumenResumido() {
       mensaje += `  • ${descripcion}\n`;
     });
   }
+
+  // (Privado) No incluir observaciones privadas
 
   mensaje += "\n" + "=".repeat(50) + "\n";
   return mensaje;
@@ -1331,6 +1428,14 @@ function mostrarHistorialFecha(fecha) {
     <textarea readonly rows="10" class="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm font-mono resize-none">${registro.resumen}</textarea>
   </div>`;
 
+  // OBSERVACIONES DIARIAS (si existen)
+  if (registro.observacionesDiarias) {
+    html += `<div class=\"bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4\">\n` +
+            `<h4 class=\"font-bold text-yellow-800 mb-2\">🗒️ Observaciones Diarias</h4>` +
+            `<div class=\"text-sm whitespace-pre-wrap\">${registro.observacionesDiarias}</div>` +
+            `</div>`;
+  }
+
   contenidoHistorial.innerHTML = html;
 }
 
@@ -1339,6 +1444,13 @@ const btnResumenCompleto = document.getElementById("btnResumenCompleto");
 const btnResumenResumido = document.getElementById("btnResumenResumido");
 const btnCopiar = document.getElementById("btnCopiar");
 const resumenFinal = document.getElementById("resumenFinal");
+// Historial de tareas UI
+const btnVerHistorialTareas = document.getElementById('btnVerHistorialTareas');
+const modalHistorialTareas = document.getElementById('modalHistorialTareas');
+const cerrarModalTareas = document.getElementById('cerrarModalTareas');
+const selectorFechaTareas = document.getElementById('selectorFechaTareas');
+const buscadorTareasHistorial = document.getElementById('buscadorTareasHistorial');
+const contenidoHistorialTareas = document.getElementById('contenidoHistorialTareas');
 
 btnResumenCompleto.addEventListener("click", () => {
   const mensaje = generarResumenTexto();
@@ -1355,6 +1467,37 @@ btnCopiar.addEventListener("click", () => {
   document.execCommand("copy");
   alert("¡Resumen copiado al portapapeles!");
 });
+
+// === HISTORIAL DE TAREAS ===
+if (btnVerHistorialTareas) {
+  btnVerHistorialTareas.addEventListener('click', abrirModalHistorialTareas);
+}
+if (cerrarModalTareas) {
+  cerrarModalTareas.addEventListener('click', cerrarModalHistorialTareas);
+}
+if (modalHistorialTareas) {
+  modalHistorialTareas.addEventListener('click', (e) => {
+    if (e.target === modalHistorialTareas) cerrarModalHistorialTareas();
+  });
+}
+if (selectorFechaTareas) {
+  selectorFechaTareas.addEventListener('change', () => {
+    const fecha = selectorFechaTareas.value;
+    if (fecha) {
+      renderHistorialTareasFecha(fecha, buscadorTareasHistorial ? buscadorTareasHistorial.value : '');
+    } else {
+      contenidoHistorialTareas.innerHTML = '<p class="text-gray-500 text-center py-8">Selecciona una fecha para ver tareas</p>';
+    }
+  });
+}
+if (buscadorTareasHistorial) {
+  buscadorTareasHistorial.addEventListener('input', () => {
+    const fecha = selectorFechaTareas ? selectorFechaTareas.value : '';
+    if (fecha) {
+      renderHistorialTareasFecha(fecha, buscadorTareasHistorial.value);
+    }
+  });
+}
 
 // === EVENT LISTENERS PARA HISTORIAL Y FINALIZACIÓN ===
 const btnConsultarHistorial = document.getElementById("btnConsultarHistorial");
@@ -1408,7 +1551,128 @@ document.addEventListener('DOMContentLoaded', () => {
       renderListaProductos();
     });
   }
+  
+  // Botón eliminar pendientes/faltantes y volver
+  const btnEliminarPendFaltYVolver = document.getElementById('btnEliminarPendFaltYVolver');
+  if (btnEliminarPendFaltYVolver) {
+    btnEliminarPendFaltYVolver.addEventListener('click', async () => {
+      await limpiarPendientesYFaltantesYVolver();
+    });
+  }
+
+  // Observaciones privadas
+  const btnObservacionesPrivadas = document.getElementById('btnObservacionesPrivadas');
+  const modalObservacionesPrivadas = document.getElementById('modalObservacionesPrivadas');
+  const cerrarModalObservacionesPrivadasBtn = document.getElementById('cerrarModalObservacionesPrivadas');
+  const btnCerrarObservacionesPrivadas = document.getElementById('btnCerrarObservacionesPrivadas');
+  if (btnObservacionesPrivadas && modalObservacionesPrivadas) {
+    btnObservacionesPrivadas.addEventListener('click', abrirModalObservacionesPrivadas);
+    cerrarModalObservacionesPrivadasBtn.addEventListener('click', cerrarModalObservacionesPrivadas);
+    btnCerrarObservacionesPrivadas.addEventListener('click', cerrarModalObservacionesPrivadas);
+    modalObservacionesPrivadas.addEventListener('click', (e) => { if (e.target === modalObservacionesPrivadas) cerrarModalObservacionesPrivadas(); });
+  }
 });
+
+// === OBSERVACIONES PRIVADAS ===
+function inicializarObservacionesPrivadasUI() {
+  const textarea = document.getElementById('observacionesPrivadas');
+  const estado = document.getElementById('estadoObservacionesPrivadas');
+  const btnGuardar = document.getElementById('btnGuardarObservacionesPrivadas');
+  const btnLimpiar = document.getElementById('btnLimpiarObservacionesPrivadas');
+  if (!textarea || !btnGuardar || !btnLimpiar) return;
+
+  // Cargar valor actual
+  textarea.value = observacionesPrivadas || '';
+
+  btnGuardar.addEventListener('click', async () => {
+    if (estado) estado.textContent = 'Guardando...';
+    try {
+      observacionesPrivadas = textarea.value;
+      await guardarObservacionesPrivadas();
+      if (estado) estado.textContent = 'Observaciones guardadas ✓';
+    } catch {
+      if (estado) estado.textContent = 'Error al guardar';
+    }
+  });
+
+  btnLimpiar.addEventListener('click', async () => {
+    if (!confirm('¿Seguro que deseas limpiar las observaciones privadas?')) return;
+    observacionesPrivadas = '';
+    textarea.value = '';
+    await guardarObservacionesPrivadas();
+    if (estado) estado.textContent = 'Observaciones limpiadas';
+  });
+}
+
+function abrirModalObservacionesPrivadas() {
+  const modal = document.getElementById('modalObservacionesPrivadas');
+  const textarea = document.getElementById('observacionesPrivadas');
+  const estado = document.getElementById('estadoObservacionesPrivadas');
+  if (modal) {
+    if (textarea) textarea.value = observacionesPrivadas || '';
+    if (estado) estado.textContent = '';
+    modal.classList.remove('hidden');
+  }
+}
+
+function cerrarModalObservacionesPrivadas() {
+  const modal = document.getElementById('modalObservacionesPrivadas');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function cargarObservacionesPrivadas() {
+  try {
+    const docRef = doc(window.db, 'observaciones_privadas', 'global');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      observacionesPrivadas = data.texto || '';
+    } else {
+      observacionesPrivadas = '';
+    }
+  } catch (e) {
+    console.error('Error cargando observaciones privadas:', e);
+    observacionesPrivadas = localStorage.getItem('observaciones_privadas') || '';
+  }
+}
+
+async function guardarObservacionesPrivadas() {
+  try {
+    const docRef = doc(window.db, 'observaciones_privadas', 'global');
+    await setDoc(docRef, { texto: observacionesPrivadas, timestamp: new Date().toISOString() });
+    localStorage.setItem('observaciones_privadas', observacionesPrivadas || '');
+  } catch (e) {
+    console.error('Error guardando observaciones privadas:', e);
+    localStorage.setItem('observaciones_privadas', observacionesPrivadas || '');
+    // No relanzar para no romper la UI
+  }
+}
+
+async function limpiarPendientesYFaltantesYVolver() {
+  try {
+    if (!confirm('¿Eliminar todos los pendientes y faltantes y volver a la página anterior?')) return;
+    // Borrar faltantes
+    for (const item of faltantes) {
+      if (item.id) {
+        await deleteDoc(doc(window.db, 'faltantes', item.id));
+      }
+    }
+    // Borrar pendientes
+    for (const item of pendientes) {
+      if (item.id) {
+        await deleteDoc(doc(window.db, 'pendientes', item.id));
+      }
+    }
+    faltantes = [];
+    pendientes = [];
+    renderFaltantes();
+    renderPendientes();
+    history.back();
+  } catch (e) {
+    console.error('Error limpiando pendientes/faltantes:', e);
+    alert('Error al limpiar pendientes/faltantes. Intenta nuevamente.');
+  }
+}
 
 // === VERIFICACIÓN DE AUTENTICACIÓN ===
 function verificarAutenticacion() {
@@ -1462,15 +1726,18 @@ if (!verificarAutenticacion()) {
   // Inicializar Firebase cuando el DOM esté listo
   document.addEventListener('DOMContentLoaded', async () => {
     await inicializarFirebase();
+    inicializarObservacionesPrivadasUI();
   });
 
   // Fallback para navegadores que no soportan DOMContentLoaded
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', async () => {
       await inicializarFirebase();
+      inicializarObservacionesPrivadasUI();
     });
   } else {
     // DOM ya está listo
     inicializarFirebase();
+    inicializarObservacionesPrivadasUI();
   }
 }
