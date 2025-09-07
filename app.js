@@ -294,6 +294,7 @@ function editarProducto(index) {
   
   // Crear modal de edición
   const modal = document.createElement('div');
+  modal.id = 'modalEditarProducto';
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
   modal.innerHTML = `
     <div class="bg-white rounded-xl max-w-md w-full p-6">
@@ -364,14 +365,16 @@ function editarProducto(index) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       console.log("Formulario de edición enviado");
-      await actualizarProducto(index, modal);
+      // Guardar y luego cerrar modal exitosamente
+      await actualizarProducto(index);
+      cerrarModalEdicion();
     });
   } else {
     console.error("No se pudo encontrar el formulario de edición");
   }
 }
 
-async function actualizarProducto(index, modal) {
+async function actualizarProducto(index) {
   try {
     console.log("Actualizando producto en índice:", index);
     const producto = stock[index];
@@ -418,16 +421,15 @@ async function actualizarProducto(index, modal) {
     
     // Actualizar interfaz
     renderListaProductos();
-    cerrarModalEdicion();
-    alert(`✅ Producto "${nuevoProducto}" actualizado correctamente`);
+    mostrarAviso(`✅ Producto "${nuevoProducto}" actualizado correctamente`);
   } catch (error) {
     console.error("Error actualizando producto:", error);
-    alert("Error al actualizar el producto. Intenta nuevamente.");
+    mostrarAviso("Error al actualizar el producto. Intenta nuevamente.");
   }
 }
 
 function cerrarModalEdicion() {
-  const modal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+  const modal = document.getElementById('modalEditarProducto');
   if (modal) {
     modal.remove();
   }
@@ -445,6 +447,7 @@ window.eliminarConteoInicial = eliminarConteoInicial;
 window.eliminarConteoFinal = eliminarConteoFinal;
 window.marcarFaltanteCompletado = marcarFaltanteCompletado;
 window.marcarPendienteCompletado = marcarPendienteCompletado;
+window.eliminarPendiente = eliminarPendiente;
 window.completarTarea = completarTarea;
 window.eliminarTarea = eliminarTarea;
 window.abrirModalHistorial = abrirModalHistorial;
@@ -715,7 +718,7 @@ function renderConteoInicial() {
               <div>
                 <strong>${item.producto}</strong> - ${item.cantidad} ${item.unidad}
               </div>
-              <button onclick="eliminarConteoInicial(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
+              <button onclick="eliminarConteoInicial('${item.id || item.producto}')" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
             </div>
           </div>`;
       });
@@ -752,7 +755,7 @@ function renderConteoFinal() {
                 ${inicial ? `<br><small>Inicial: ${inicial.cantidad} | Usado: ${usado}</small>` : ''}
                 ${item.observacion ? `<br><small>Obs: ${item.observacion}</small>` : ''}
               </div>
-              <button onclick="eliminarConteoFinal(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
+              <button onclick="eliminarConteoFinal('${item.id || item.producto}')" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
             </div>
           </div>`;
       });
@@ -762,13 +765,15 @@ function renderConteoFinal() {
   listaConteoFinal.innerHTML = html;
 }
 
-async function eliminarConteoInicial(i) {
+async function eliminarConteoInicial(key) {
   try {
-    const item = conteoInicial[i];
+    let index = typeof key === 'number' ? key : conteoInicial.findIndex(c => c.id === key || c.producto === key);
+    if (index < 0) return;
+    const item = conteoInicial[index];
     if (item.id) {
       await deleteDoc(doc(window.db, "conteoInicial", item.id));
     }
-    conteoInicial.splice(i, 1);
+    conteoInicial.splice(index, 1);
     renderConteoInicial();
     mostrarProductosCategoria();
   } catch (error) {
@@ -777,13 +782,15 @@ async function eliminarConteoInicial(i) {
   }
 }
 
-async function eliminarConteoFinal(i) {
+async function eliminarConteoFinal(key) {
   try {
-    const item = conteoFinal[i];
+    let index = typeof key === 'number' ? key : conteoFinal.findIndex(c => c.id === key || c.producto === key);
+    if (index < 0) return;
+    const item = conteoFinal[index];
     if (item.id) {
       await deleteDoc(doc(window.db, "conteoFinal", item.id));
     }
-    conteoFinal.splice(i, 1);
+    conteoFinal.splice(index, 1);
     renderConteoFinal();
     mostrarProductosFinal();
   } catch (error) {
@@ -807,9 +814,12 @@ function renderPendientes() {
       <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
         <div class="flex justify-between items-center">
           <div class="${estiloCompletado}">${descripcion}</div>
-          <button onclick="marcarPendienteCompletado(${i})" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
-            ${completado ? '↩️' : '✔️'}
-          </button>
+          <div class="flex gap-2">
+            <button onclick="marcarPendienteCompletado(${i})" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+              ${completado ? '↩️' : '✔️'}
+            </button>
+            <button onclick="eliminarPendiente(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">🗑️</button>
+          </div>
         </div>
       </div>`;
   });
@@ -855,6 +865,23 @@ async function marcarPendienteCompletado(i) {
   } catch (error) {
     console.error("Error marcando pendiente:", error);
     alert("Error al marcar el pendiente. Intenta nuevamente.");
+  }
+}
+
+// Eliminar pendiente individual
+async function eliminarPendiente(i) {
+  try {
+    const item = pendientes[i];
+    if (!item) return;
+    if (!confirm(`¿Eliminar pendiente: "${item.descripcion || ''}"?`)) return;
+    if (item.id) {
+      await deleteDoc(doc(window.db, 'pendientes', item.id));
+    }
+    pendientes.splice(i, 1);
+    renderPendientes();
+  } catch (e) {
+    console.error('Error eliminando pendiente:', e);
+    alert('Error al eliminar el pendiente. Intenta nuevamente.');
   }
 }
 
@@ -1008,7 +1035,10 @@ async function eliminarTarea(i) {
 function actualizarFechaActual() {
   const fechaElement = document.getElementById("fechaActual");
   if (fechaElement) {
-    fechaElement.textContent = diaActual;
+    const ahora = new Date();
+    const fecha = ahora.toLocaleDateString();
+    const hora = ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    fechaElement.textContent = `${fecha} ${hora}`;
   }
 }
 
@@ -1201,13 +1231,15 @@ function generarResumenResumido() {
   let mensaje = `📊 RESUMEN RESUMIDO DEL DÍA - ${fecha}\n`;
   mensaje += "=".repeat(50) + "\n\n";
 
-  // STOCK INICIAL
+  // Categorías requeridas en el resumen resumido
+  const categoriasResumidas = ["Preparados", "Verduras", "Quesos", "Paquetes", "General"];
+
+  // STOCK INICIAL (solo categorías resumidas)
   mensaje += "🌅 STOCK INICIAL:\n";
   if (conteoInicial.length === 0) {
     mensaje += "- Sin conteo inicial\n";
   } else {
-    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
-    categorias.forEach(cat => {
+    categoriasResumidas.forEach(cat => {
       let items = conteoInicial.filter(c => c.categoria === cat);
       if (items.length > 0) {
         mensaje += `\n${cat}:\n`;
@@ -1218,13 +1250,12 @@ function generarResumenResumido() {
     });
   }
 
-  // STOCK FINAL
+  // STOCK FINAL (solo categorías resumidas) con observaciones
   mensaje += "\n🌙 STOCK FINAL:\n";
   if (conteoFinal.length === 0) {
     mensaje += "- Sin conteo final\n";
   } else {
-    let categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
-    categorias.forEach(cat => {
+    categoriasResumidas.forEach(cat => {
       let items = conteoFinal.filter(c => c.categoria === cat);
       if (items.length > 0) {
         mensaje += `\n${cat}:\n`;
@@ -1232,6 +1263,9 @@ function generarResumenResumido() {
           let inicial = conteoInicial.find(c => c.producto === item.producto);
           let usado = inicial ? inicial.cantidad - item.cantidad : 0;
           mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad} (usado: ${usado})\n`;
+          if (item.observacion) {
+            mensaje += `    Obs: ${item.observacion}\n`;
+          }
         });
       }
     });
@@ -1243,12 +1277,10 @@ function generarResumenResumido() {
     mensaje += "- Sin faltantes\n";
   } else {
     faltantes.forEach(f => {
-      const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+      const descripcion = f.descripcion || f;
       mensaje += `  • ${descripcion}\n`;
     });
   }
-
-  // (Privado) No incluir observaciones privadas
 
   mensaje += "\n" + "=".repeat(50) + "\n";
   return mensaje;
@@ -1465,7 +1497,7 @@ btnResumenResumido.addEventListener("click", () => {
 btnCopiar.addEventListener("click", () => {
   resumenFinal.select();
   document.execCommand("copy");
-  alert("¡Resumen copiado al portapapeles!");
+  mostrarAviso("¡Resumen copiado al portapapeles!");
 });
 
 // === HISTORIAL DE TAREAS ===
@@ -1571,6 +1603,57 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCerrarObservacionesPrivadas.addEventListener('click', cerrarModalObservacionesPrivadas);
     modalObservacionesPrivadas.addEventListener('click', (e) => { if (e.target === modalObservacionesPrivadas) cerrarModalObservacionesPrivadas(); });
   }
+
+  // Botón Subir (scroll-to-top)
+  const btnScrollTop = document.getElementById('btnScrollTop');
+  if (btnScrollTop) {
+    const toggleBtn = () => {
+      if (window.scrollY > 200) {
+        btnScrollTop.classList.remove('hidden');
+      } else {
+        btnScrollTop.classList.add('hidden');
+      }
+    };
+    window.addEventListener('scroll', toggleBtn, { passive: true });
+    btnScrollTop.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    toggleBtn();
+  }
+
+  // Modal general de avisos
+  const modalAviso = document.getElementById('modalAviso');
+  const contenidoModalAviso = document.getElementById('contenidoModalAviso');
+  const btnAceptarAviso = document.getElementById('btnAceptarAviso');
+  const cerrarModalAvisoBtn = document.getElementById('cerrarModalAviso');
+
+  function ocultarAviso() {
+    if (modalAviso) modalAviso.classList.add('hidden');
+  }
+
+  window.mostrarAviso = function(mensaje) {
+    if (!modalAviso || !contenidoModalAviso) {
+      // Fallback si no existe el modal
+      window.alert(mensaje);
+      return;
+    }
+    contenidoModalAviso.textContent = mensaje || '';
+    modalAviso.classList.remove('hidden');
+  };
+
+  if (btnAceptarAviso) btnAceptarAviso.addEventListener('click', ocultarAviso);
+  if (cerrarModalAvisoBtn) cerrarModalAvisoBtn.addEventListener('click', ocultarAviso);
+  if (modalAviso) {
+    modalAviso.addEventListener('click', (e) => {
+      if (e.target === modalAviso) ocultarAviso();
+    });
+  }
+
+  // Redirigir window.alert al modal de avisos
+  const originalAlert = window.alert.bind(window);
+  window.alert = function(msg) {
+    try { window.mostrarAviso(msg); } catch { originalAlert(msg); }
+  };
 });
 
 // === OBSERVACIONES PRIVADAS ===
@@ -1727,6 +1810,9 @@ if (!verificarAutenticacion()) {
   document.addEventListener('DOMContentLoaded', async () => {
     await inicializarFirebase();
     inicializarObservacionesPrivadasUI();
+    // Actualización en vivo de fecha y hora visual (no cambia diaActual)
+    actualizarFechaActual();
+    setInterval(actualizarFechaActual, 1000);
   });
 
   // Fallback para navegadores que no soportan DOMContentLoaded
@@ -1734,10 +1820,14 @@ if (!verificarAutenticacion()) {
     document.addEventListener('DOMContentLoaded', async () => {
       await inicializarFirebase();
       inicializarObservacionesPrivadasUI();
+      actualizarFechaActual();
+      setInterval(actualizarFechaActual, 1000);
     });
   } else {
     // DOM ya está listo
     inicializarFirebase();
     inicializarObservacionesPrivadasUI();
+    actualizarFechaActual();
+    setInterval(actualizarFechaActual, 1000);
   }
 }
