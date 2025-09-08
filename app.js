@@ -22,6 +22,9 @@ let faltantes = [];
 let pendientes = [];
 let tareas = [];
 let historial = [];
+// Observaciones por empleado (persistentes)
+let empleados = [];
+let obsUIIniciada = false;
 let diaActual = new Date().toLocaleDateString();
 // Observaciones privadas (persisten y no están ligadas al día)
 let observacionesPrivadas = "";
@@ -114,8 +117,9 @@ async function cargarTodosLosDatos() {
     const historialSnapshot = await getDocs(historialRef);
     historial = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
-    // Cargar observaciones privadas persistentes
+    // Cargar observaciones persistentes
     await cargarObservacionesPrivadas();
+    await cargarEmpleados();
     
     console.log("Datos cargados desde Firebase:", { stock, conteoInicial, conteoFinal, faltantes, pendientes, tareas, historial });
     
@@ -146,6 +150,8 @@ function actualizarInterfaz() {
   renderPendientes();
   renderTareas();
   renderListaProductos();
+  // Observaciones UI si modal está abierto
+  renderEmpleadosLista();
 }
 
 function abrirModalHistorialTareas() {
@@ -1078,8 +1084,10 @@ async function finalizarDia() {
       historial.push({ id: docRef.id, ...registroDia });
     }
 
-    // Limpiar datos actuales de Firebase
-    await limpiarDatosDelDia();
+    // Antes de limpiar: preparar arrastre de conteo final -> inicial para el próximo día
+    const migrado = await arrastrarFinalComoInicialParaManiana();
+    // Limpiar datos actuales; si migramos, preservamos el conteoInicial recién creado
+    await limpiarDatosDelDia({ preservarInicial: !!migrado });
 
     // Actualizar vistas
     renderConteoInicial();
@@ -1096,16 +1104,18 @@ async function finalizarDia() {
   }
 }
 
-async function limpiarDatosDelDia() {
+async function limpiarDatosDelDia(opts = { preservarInicial: false }) {
   try {
-    // Eliminar conteos iniciales
-    for (const item of conteoInicial) {
-      if (item.id) {
-        await deleteDoc(doc(window.db, "conteoInicial", item.id));
+    // Eliminar conteos iniciales solo si NO debemos preservarlos
+    if (!opts.preservarInicial) {
+      for (const item of conteoInicial) {
+        if (item.id) {
+          await deleteDoc(doc(window.db, "conteoInicial", item.id));
+        }
       }
+      conteoInicial = [];
     }
-    
-    // Eliminar conteos finales
+    // Eliminar conteos finales (quedan limpios para el nuevo día)
     for (const item of conteoFinal) {
       if (item.id) {
         await deleteDoc(doc(window.db, "conteoFinal", item.id));
@@ -1134,13 +1144,43 @@ async function limpiarDatosDelDia() {
     }
     
     // Limpiar arrays locales
-    conteoInicial = [];
     conteoFinal = [];
     faltantes = [];
     pendientes = [];
     tareas = [];
   } catch (error) {
     console.error("Error limpiando datos del día:", error);
+  }
+}
+
+// Migra todo el conteo final actual como conteo inicial del próximo día
+async function arrastrarFinalComoInicialParaManiana() {
+  try {
+    if (!conteoFinal || conteoFinal.length === 0) return false;
+    // Eliminar todo conteoInicial actual primero (vamos a reemplazarlo)
+    for (const item of conteoInicial) {
+      if (item.id) await deleteDoc(doc(window.db, 'conteoInicial', item.id));
+    }
+    conteoInicial = [];
+
+    // Crear nuevos documentos en conteoInicial basados en conteoFinal
+    const nuevasPromesas = conteoFinal.map(async (item) => {
+      const datos = {
+        categoria: item.categoria,
+        producto: item.producto,
+        unidad: item.unidad,
+        cantidad: Number(item.cantidad) || 0,
+        fecha: new Date().toLocaleDateString(),
+        timestamp: new Date().toISOString()
+      };
+      const ref = await addDoc(collection(window.db, 'conteoInicial'), datos);
+      return { id: ref.id, ...datos };
+    });
+    conteoInicial = await Promise.all(nuevasPromesas);
+    return true;
+  } catch (e) {
+    console.error('Error migrando final -> inicial:', e);
+    return false;
   }
 }
 
@@ -1228,61 +1268,28 @@ function generarResumenTexto() {
 
 function generarResumenResumido() {
   let fecha = new Date().toLocaleDateString();
-  let mensaje = `📊 RESUMEN RESUMIDO DEL DÍA - ${fecha}\n`;
-  mensaje += "=".repeat(50) + "\n\n";
+  let mensaje = `📊 RESUMEN DEL DÍA - ${fecha}\n`;
+  mensaje += "-".repeat(40) + "\n";
 
-  // Categorías requeridas en el resumen resumido
-  const categoriasResumidas = ["Preparados", "Verduras", "Quesos", "Paquetes", "General"];
-
-  // STOCK INICIAL (solo categorías resumidas)
-  mensaje += "🌅 STOCK INICIAL:\n";
-  if (conteoInicial.length === 0) {
-    mensaje += "- Sin conteo inicial\n";
-  } else {
-    categoriasResumidas.forEach(cat => {
-      let items = conteoInicial.filter(c => c.categoria === cat);
-      if (items.length > 0) {
-        mensaje += `\n${cat}:\n`;
-        items.forEach(item => {
-          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad}\n`;
-        });
-      }
-    });
-  }
-
-  // STOCK FINAL (solo categorías resumidas) con observaciones
-  mensaje += "\n🌙 STOCK FINAL:\n";
+  // Solo imprimir STOCK FINAL y LO USADO en el día
   if (conteoFinal.length === 0) {
-    mensaje += "- Sin conteo final\n";
+    mensaje += "Sin conteo final registrado\n";
   } else {
-    categoriasResumidas.forEach(cat => {
-      let items = conteoFinal.filter(c => c.categoria === cat);
-      if (items.length > 0) {
-        mensaje += `\n${cat}:\n`;
-        items.forEach(item => {
-          let inicial = conteoInicial.find(c => c.producto === item.producto);
-          let usado = inicial ? inicial.cantidad - item.cantidad : 0;
-          mensaje += `  • ${item.producto}: ${item.cantidad} ${item.unidad} (usado: ${usado})\n`;
-          if (item.observacion) {
-            mensaje += `    Obs: ${item.observacion}\n`;
-          }
-        });
-      }
+    // Agrupar por categoría para mejor lectura
+    const categorias = ["Preparados", "Verduras", "Quesos", "Paquetes", "Condimentos/Ingredientes", "Accesorios", "Botiquín", "Limpieza", "General", "Gas"];
+    categorias.forEach(cat => {
+      const items = conteoFinal.filter(c => c.categoria === cat);
+      if (items.length === 0) return;
+      mensaje += `\n${cat}:\n`;
+      items.forEach(item => {
+        const inicial = conteoInicial.find(c => c.producto === item.producto);
+        const usado = inicial ? (inicial.cantidad - item.cantidad) : 0;
+        mensaje += `  • ${item.producto}: final ${item.cantidad} ${item.unidad} | usado ${usado}\n`;
+      });
     });
   }
 
-  // FALTANTES
-  mensaje += "\n⚠️ FALTANTES:\n";
-  if (faltantes.length === 0) {
-    mensaje += "- Sin faltantes\n";
-  } else {
-    faltantes.forEach(f => {
-      const descripcion = f.descripcion || f;
-      mensaje += `  • ${descripcion}\n`;
-    });
-  }
-
-  mensaje += "\n" + "=".repeat(50) + "\n";
+  mensaje += "\n" + "-".repeat(40) + "\n";
   return mensaje;
 }
 
@@ -1658,42 +1665,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // === OBSERVACIONES PRIVADAS ===
 function inicializarObservacionesPrivadasUI() {
-  const textarea = document.getElementById('observacionesPrivadas');
-  const estado = document.getElementById('estadoObservacionesPrivadas');
-  const btnGuardar = document.getElementById('btnGuardarObservacionesPrivadas');
-  const btnLimpiar = document.getElementById('btnLimpiarObservacionesPrivadas');
-  if (!textarea || !btnGuardar || !btnLimpiar) return;
-
-  // Cargar valor actual
-  textarea.value = observacionesPrivadas || '';
-
-  btnGuardar.addEventListener('click', async () => {
-    if (estado) estado.textContent = 'Guardando...';
-    try {
-      observacionesPrivadas = textarea.value;
-      await guardarObservacionesPrivadas();
-      if (estado) estado.textContent = 'Observaciones guardadas ✓';
-    } catch {
-      if (estado) estado.textContent = 'Error al guardar';
-    }
-  });
-
-  btnLimpiar.addEventListener('click', async () => {
-    if (!confirm('¿Seguro que deseas limpiar las observaciones privadas?')) return;
-    observacionesPrivadas = '';
-    textarea.value = '';
-    await guardarObservacionesPrivadas();
-    if (estado) estado.textContent = 'Observaciones limpiadas';
-  });
+  if (obsUIIniciada) return;
+  const btnAgregarEmpleado = document.getElementById('btnAgregarEmpleado');
+  if (btnAgregarEmpleado) {
+    btnAgregarEmpleado.addEventListener('click', async () => {
+      const nombre = prompt('Nombre del empleado nuevo:');
+      if (!nombre) return;
+      const limpio = nombre.trim();
+      if (!limpio) return;
+      // Evitar duplicados por nombre exacto (case-insensitive)
+      const existe = empleados.some(e => (e.nombre||'').toLowerCase() === limpio.toLowerCase());
+      if (existe) {
+        const estado = document.getElementById('estadoObservacionesPrivadas');
+        if (estado) estado.textContent = 'Ya existe un empleado con ese nombre';
+        return;
+      }
+      await agregarEmpleado(limpio);
+      renderEmpleadosLista();
+      renderEmpleadoDetalle(selectedEmpleadoIndex);
+      const estado = document.getElementById('estadoObservacionesPrivadas');
+      if (estado) estado.textContent = 'Empleado agregado ✓';
+    });
+  }
+  obsUIIniciada = true;
 }
 
 function abrirModalObservacionesPrivadas() {
   const modal = document.getElementById('modalObservacionesPrivadas');
-  const textarea = document.getElementById('observacionesPrivadas');
-  const estado = document.getElementById('estadoObservacionesPrivadas');
   if (modal) {
-    if (textarea) textarea.value = observacionesPrivadas || '';
-    if (estado) estado.textContent = '';
+    renderEmpleadosLista();
+    renderEmpleadoDetalle(selectedEmpleadoIndex);
     modal.classList.remove('hidden');
   }
 }
@@ -1730,6 +1731,124 @@ async function guardarObservacionesPrivadas() {
     // No relanzar para no romper la UI
   }
 }
+
+// === EMPLEADOS/OBSERVACIONES ===
+let selectedEmpleadoIndex = 0;
+
+function renderEmpleadosLista() {
+  const lista = document.getElementById('empleadosLista');
+  if (!lista) return;
+  if (!empleados || empleados.length === 0) {
+    lista.innerHTML = '<div class="p-3 text-gray-500">Sin empleados</div>';
+    return;
+  }
+  lista.innerHTML = empleados.map((emp, i) => {
+    const activo = i === selectedEmpleadoIndex;
+    return `
+      <button class="w-full text-left px-3 py-2 ${activo ? 'bg-yellow-200' : 'hover:bg-yellow-100'} flex items-center gap-2 border-b border-yellow-100" onclick="seleccionarEmpleado(${i})">
+        <span class="w-7 h-7 rounded-full bg-yellow-300 flex items-center justify-center text-yellow-900 text-sm font-bold">${(emp.nombre||'?').charAt(0).toUpperCase()}</span>
+        <span class="truncate">${emp.nombre||''}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderEmpleadoDetalle(i) {
+  const det = document.getElementById('empleadoDetalle');
+  if (!det) return;
+  if (!empleados || empleados.length === 0) {
+    det.innerHTML = '<div class="text-gray-500">Agrega un empleado para comenzar</div>';
+    return;
+  }
+  if (i == null || i < 0 || i >= empleados.length) i = 0;
+  selectedEmpleadoIndex = i;
+  const emp = empleados[i];
+  const nota = emp.nota || '';
+  det.innerHTML = `
+    <div class="space-y-3 w-full">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-yellow-200 flex items-center justify-center text-yellow-800 font-bold">${(emp.nombre||'?').charAt(0).toUpperCase()}</div>
+          <div>
+            <div class="text-lg font-semibold text-gray-800">${emp.nombre||''}</div>
+            <div class="text-xs text-gray-500">Sección de notas</div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="bg-blue-600 text-white px-3 py-1 rounded" onclick="guardarNotaEmpleado(${i})">Guardar</button>
+          <button class="bg-red-600 text-white px-3 py-1 rounded" onclick="eliminarEmpleado(${i})">Eliminar</button>
+        </div>
+      </div>
+      <textarea id="nota_emp_${i}" rows="8" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white resize-none" placeholder="Escribe aquí...">${nota.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+    </div>
+  `;
+  renderEmpleadosLista();
+}
+
+window.seleccionarEmpleado = function(i) {
+  renderEmpleadoDetalle(i);
+};
+
+async function cargarEmpleados() {
+  try {
+    const docRef = doc(window.db, 'observaciones_privadas', 'empleados');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      empleados = Array.isArray(data.lista) ? data.lista : [];
+    } else {
+      // Inicial con tres empleados solicitados
+      empleados = [
+        { nombre: 'Camila', nota: '' },
+        { nombre: 'Matias', nota: '' },
+        { nombre: 'Denis', nota: '' }
+      ];
+      await guardarEmpleados();
+    }
+  } catch (e) {
+    console.error('Error cargando empleados:', e);
+    const raw = localStorage.getItem('empleados_observaciones');
+    empleados = raw ? JSON.parse(raw) : [
+      { nombre: 'Camila', nota: '' },
+      { nombre: 'Matias', nota: '' },
+      { nombre: 'Denis', nota: '' }
+    ];
+  }
+}
+
+async function guardarEmpleados() {
+  try {
+    const docRef = doc(window.db, 'observaciones_privadas', 'empleados');
+    await setDoc(docRef, { lista: empleados, timestamp: new Date().toISOString() });
+    localStorage.setItem('empleados_observaciones', JSON.stringify(empleados));
+  } catch (e) {
+    console.error('Error guardando empleados:', e);
+    localStorage.setItem('empleados_observaciones', JSON.stringify(empleados));
+  }
+}
+
+async function agregarEmpleado(nombre) {
+  empleados.push({ nombre, nota: '' });
+  await guardarEmpleados();
+}
+
+window.eliminarEmpleado = async function(i) {
+  if (!confirm('¿Eliminar empleado?')) return;
+  empleados.splice(i, 1);
+  await guardarEmpleados();
+  if (selectedEmpleadoIndex >= empleados.length) selectedEmpleadoIndex = Math.max(0, empleados.length - 1);
+  renderEmpleadosLista();
+  renderEmpleadoDetalle(selectedEmpleadoIndex);
+};
+
+window.guardarNotaEmpleado = async function(i) {
+  const ta = document.getElementById(`nota_emp_${i}`);
+  if (!ta) return;
+  empleados[i].nota = ta.value;
+  await guardarEmpleados();
+  const estado = document.getElementById('estadoObservacionesPrivadas');
+  if (estado) estado.textContent = 'Notas guardadas ✓';
+};
 
 async function limpiarPendientesYFaltantesYVolver() {
   try {
