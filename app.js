@@ -1054,6 +1054,12 @@ async function finalizarDia() {
     return;
   }
 
+  // Mostrar indicador de carga
+  const btnFinalizar = document.getElementById("btnFinalizarDia");
+  const textoOriginal = btnFinalizar.textContent;
+  btnFinalizar.textContent = "⏳ Guardando...";
+  btnFinalizar.disabled = true;
+
   try {
     // Crear registro del día
     const registroDia = {
@@ -1066,8 +1072,6 @@ async function finalizarDia() {
       tareas: [...tareas],
       resumen: generarResumenTexto()
     };
-
-    // No incluir observaciones privadas en el historial del día
 
     // Verificar si ya existe un registro para hoy
     const existente = historial.find(h => h.fecha === diaActual);
@@ -1101,47 +1105,59 @@ async function finalizarDia() {
   } catch (error) {
     console.error("Error finalizando día:", error);
     alert("Error al finalizar el día. Intenta nuevamente.");
+  } finally {
+    // Restaurar botón
+    btnFinalizar.textContent = textoOriginal;
+    btnFinalizar.disabled = false;
   }
 }
 
 async function limpiarDatosDelDia(opts = { preservarInicial: false }) {
   try {
+    // Importar writeBatch para operaciones en lote
+    const { writeBatch } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+    const batch = writeBatch(window.db);
+    
     // Eliminar conteos iniciales solo si NO debemos preservarlos
     if (!opts.preservarInicial) {
       for (const item of conteoInicial) {
         if (item.id) {
-          await deleteDoc(doc(window.db, "conteoInicial", item.id));
+          batch.delete(doc(window.db, "conteoInicial", item.id));
         }
       }
       conteoInicial = [];
     }
+    
     // Eliminar conteos finales (quedan limpios para el nuevo día)
     for (const item of conteoFinal) {
       if (item.id) {
-        await deleteDoc(doc(window.db, "conteoFinal", item.id));
+        batch.delete(doc(window.db, "conteoFinal", item.id));
       }
     }
     
     // Eliminar faltantes
     for (const item of faltantes) {
       if (item.id) {
-        await deleteDoc(doc(window.db, "faltantes", item.id));
+        batch.delete(doc(window.db, "faltantes", item.id));
       }
     }
     
     // Eliminar pendientes
     for (const item of pendientes) {
       if (item.id) {
-        await deleteDoc(doc(window.db, "pendientes", item.id));
+        batch.delete(doc(window.db, "pendientes", item.id));
       }
     }
     
     // Eliminar tareas
     for (const item of tareas) {
       if (item.id) {
-        await deleteDoc(doc(window.db, "tareas", item.id));
+        batch.delete(doc(window.db, "tareas", item.id));
       }
     }
+    
+    // Ejecutar todas las eliminaciones en una sola operación
+    await batch.commit();
     
     // Limpiar arrays locales
     conteoFinal = [];
@@ -1150,6 +1166,11 @@ async function limpiarDatosDelDia(opts = { preservarInicial: false }) {
     tareas = [];
   } catch (error) {
     console.error("Error limpiando datos del día:", error);
+    // Fallback: limpiar arrays locales aunque falle la eliminación en Firebase
+    conteoFinal = [];
+    faltantes = [];
+    pendientes = [];
+    tareas = [];
   }
 }
 
@@ -1157,14 +1178,27 @@ async function limpiarDatosDelDia(opts = { preservarInicial: false }) {
 async function arrastrarFinalComoInicialParaManiana() {
   try {
     if (!conteoFinal || conteoFinal.length === 0) return false;
+    
+    // Importar writeBatch para operaciones en lote
+    const { writeBatch } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+    const batch = writeBatch(window.db);
+    
     // Eliminar todo conteoInicial actual primero (vamos a reemplazarlo)
     for (const item of conteoInicial) {
-      if (item.id) await deleteDoc(doc(window.db, 'conteoInicial', item.id));
+      if (item.id) {
+        batch.delete(doc(window.db, 'conteoInicial', item.id));
+      }
     }
+    
+    // Ejecutar eliminaciones
+    await batch.commit();
     conteoInicial = [];
 
-    // Crear nuevos documentos en conteoInicial basados en conteoFinal
-    const nuevasPromesas = conteoFinal.map(async (item) => {
+    // Crear nuevos documentos en conteoInicial basados en conteoFinal usando batch
+    const newBatch = writeBatch(window.db);
+    const nuevosItems = [];
+    
+    for (const item of conteoFinal) {
       const datos = {
         categoria: item.categoria,
         producto: item.producto,
@@ -1173,10 +1207,18 @@ async function arrastrarFinalComoInicialParaManiana() {
         fecha: new Date().toLocaleDateString(),
         timestamp: new Date().toISOString()
       };
-      const ref = await addDoc(collection(window.db, 'conteoInicial'), datos);
-      return { id: ref.id, ...datos };
-    });
-    conteoInicial = await Promise.all(nuevasPromesas);
+      
+      // Crear referencia temporal para el documento
+      const newDocRef = doc(collection(window.db, 'conteoInicial'));
+      newBatch.set(newDocRef, datos);
+      
+      // Agregar a la lista local
+      nuevosItems.push({ id: newDocRef.id, ...datos });
+    }
+    
+    // Ejecutar todas las creaciones en una sola operación
+    await newBatch.commit();
+    conteoInicial = nuevosItems;
     return true;
   } catch (e) {
     console.error('Error migrando final -> inicial:', e);
@@ -1286,6 +1328,17 @@ function generarResumenResumido() {
         const usado = inicial ? (inicial.cantidad - item.cantidad) : 0;
         mensaje += `  • ${item.producto}: final ${item.cantidad} ${item.unidad} | usado ${usado}\n`;
       });
+    });
+  }
+
+  // Agregar faltantes del día al resumen resumido
+  mensaje += "\n⚠️ FALTANTES DEL DÍA:\n";
+  if (faltantes.length === 0) {
+    mensaje += "- No hay faltantes registrados\n";
+  } else {
+    faltantes.forEach(f => {
+      const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
+      mensaje += `  • ${descripcion}\n`;
     });
   }
 
