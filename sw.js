@@ -1,6 +1,7 @@
 const CACHE_NAME = 'stock-mqb-v2';
 const urlsToCache = [
   './',
+  './login.html',
   './index.html',
   './app.js',
   './manifest.json',
@@ -72,3 +73,4 @@ self.addEventListener('fetch', function(event) {
       })
     );
 });
+
