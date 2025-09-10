@@ -4,6 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistema MQB </title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Sistema de gestión de stock para MQB">
+  <meta name="theme-color" content="#3B82F6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Stock MQB">
+  <meta name="msapplication-TileColor" content="#3B82F6">
+  <meta name="msapplication-tap-highlight" content="no">
+  
+  <!-- Manifest -->
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icon-16x16.png">
+  <link rel="apple-touch-icon" href="icon-192x192.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Firebase SDK -->
   <script type="module">
@@ -493,6 +510,19 @@
 
   <script type="module" src="app.js"></script>
   <script>
+    // Registrar Service Worker para PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registrado exitosamente:', registration.scope);
+          })
+          .catch(function(err) {
+            console.log('Error al registrar ServiceWorker:', err);
+          });
+      });
+    }
+    
     // Script de prueba para verificar que todo funciona
     console.log("HTML cargado correctamente");
     console.log("Stock inicial:", stock);
@@ -518,4 +548,3 @@
   </script>
 </body>
 </html>
-
