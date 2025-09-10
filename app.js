@@ -510,8 +510,8 @@ function mostrarProductosCategoria() {
                    value="${cantidadActual}"
                    class="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center">
             <button onclick="agregarConteoInicial('${producto.producto}', '${producto.categoria}', '${producto.unidad}')" 
-                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
-              ${yaRegistrado ? '✏️' : '📝'}
+                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium">
+              ${yaRegistrado ? 'Confirmar' : 'Confirmar'}
             </button>
           </div>
         </div>
@@ -562,8 +562,8 @@ function mostrarProductosFinal() {
                         rows="2" 
                         class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none">${final ? final.observacion : ''}</textarea>
               <button onclick="agregarConteoFinal('${producto.producto}', '${producto.categoria}', '${producto.unidad}')" 
-                      class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                ${final ? '✏️' : '📊'}
+                      class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+                ${final ? 'Confirmar' : 'Confirmar'}
               </button>
             </div>
           </div>
