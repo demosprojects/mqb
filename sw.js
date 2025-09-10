@@ -1,9 +1,11 @@
-const CACHE_NAME = 'stock-mqb-v1';
+const CACHE_NAME = 'stock-mqb-v2';
 const urlsToCache = [
   './',
   './index.html',
   './app.js',
   './manifest.json',
+  './icon-192x192.png',
+  './icon-512x512.png',
   'https://cdn.tailwindcss.com',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js'
