@@ -909,9 +909,12 @@ function renderFaltantes() {
             <span class="text-red-600 mr-2">⚠️</span>
             <div class="${estiloCompletado}">${descripcion}</div>
           </div>
-          <button onclick="marcarFaltanteCompletado(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
-            ${completado ? '↩️' : '✔️'}
-          </button>
+          <div class="flex gap-2">
+            <button onclick="marcarFaltanteCompletado(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
+              ${completado ? '↩️' : '✔️'}
+            </button>
+            <button onclick="eliminarFaltante(${i})" class="bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-600 transition-colors text-sm font-medium">🗑️</button>
+          </div>
         </div>
       </div>`;
   });
@@ -959,6 +962,26 @@ async function marcarFaltanteCompletado(i) {
     alert("Error al marcar el faltante. Intenta nuevamente.");
   }
 }
+
+// Eliminar faltante individual
+async function eliminarFaltante(i) {
+  try {
+    const item = faltantes[i];
+    if (!item) return;
+    if (!confirm(`¿Eliminar faltante: "${item.descripcion || ''}"?`)) return;
+    if (item.id) {
+      await deleteDoc(doc(window.db, 'faltantes', item.id));
+    }
+    faltantes.splice(i, 1);
+    renderFaltantes();
+  } catch (e) {
+    console.error('Error eliminando faltante:', e);
+    alert('Error al eliminar el faltante. Intenta nuevamente.');
+  }
+}
+
+// Hacer función global
+window.eliminarFaltante = eliminarFaltante;
 
 // === TAREAS ROTATIVAS ===
 const formTareas = document.getElementById("formTareas");
@@ -1047,6 +1070,7 @@ function actualizarFechaActual() {
     fechaElement.textContent = `${fecha} ${hora}`;
   }
 }
+
 
 async function finalizarDia() {
   if (conteoInicial.length === 0 && conteoFinal.length === 0) {
