@@ -115,9 +115,6 @@
           <p id="fechaActual" class="inline-block mt-2 px-3 py-1 rounded-lg bg-blue-100 text-blue-800 font-semibold tracking-wide"></p>
         </div>
         <div class="flex flex-wrap justify-center gap-2 compact-gap">
-          <button id="btnEliminarPendFaltYVolver" class="bg-gray-600 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors font-medium">
-            Limpiar Pend./Falt. y Volver
-          </button>
           <button id="btnObservacionesPrivadas" class="bg-yellow-600 text-white px-3 py-2 rounded-lg hover:bg-yellow-700 transition-colors font-medium">
             Observaciones
           </button>
@@ -225,6 +222,12 @@
                 <option value="paquete">Paquete</option>
               </select>
             </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Límite mínimo</label>
+              <input type="number" id="limite" min="0" step="0.01" placeholder="Ej: 5" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              <p class="text-xs text-gray-500 mt-1">Cantidad mínima para generar faltante automático (0 = sin límite)</p>
+            </div>
           </div>
           <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium">
             Agregar producto
@@ -282,8 +285,8 @@
 
     
     <!-- MODAL OBSERVACIONES POR EMPLEADO -->
-    <div id="modalObservacionesPrivadas" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
-      <div class="flex items-center justify-center min-h-screen p-4">
+    <div id="modalObservacionesPrivadas" class="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 hidden z-50 backdrop-blur-sm">
+      <div class="flex items-center justify-center min-h-screen p-4 w-full h-full">
         <div class="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           <div class="p-6 border-b border-gray-200">
             <div class="flex items-center justify-between">
@@ -327,7 +330,7 @@
           <span class="text-red-600 text-xl">⚠️</span>
         </div>
         <div>
-          <h2 class="text-xl section-title font-bold text-gray-800">Faltantes del día</h2>
+          <h2 class="text-xl section-title font-bold text-gray-800">Productos que faltan</h2>
           <p class="text-sm text-gray-600">Productos que faltan o están agotados</p>
         </div>
       </div>
@@ -431,8 +434,8 @@
     </div>
 
     <!-- MODAL DE HISTORIAL -->
-    <div id="modalHistorial" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
-      <div class="flex items-center justify-center min-h-screen p-4">
+    <div id="modalHistorial" class="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 hidden z-50 backdrop-blur-sm">
+      <div class="flex items-center justify-center min-h-screen p-4 w-full h-full">
         <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
           <div class="p-6 border-b border-gray-200">
             <div class="flex items-center justify-between">
@@ -459,8 +462,8 @@
     </div>
 
     <!-- MODAL DE HISTORIAL DE TAREAS -->
-    <div id="modalHistorialTareas" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
-      <div class="flex items-center justify-center min-h-screen p-4">
+    <div id="modalHistorialTareas" class="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 hidden z-50 backdrop-blur-sm">
+      <div class="flex items-center justify-center min-h-screen p-4 w-full h-full">
         <div class="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           <div class="p-6 border-b border-gray-200">
             <div class="flex items-center justify-between">
@@ -489,9 +492,10 @@
       </div>
     </div>
     
+
     <!-- MODAL GENERAL DE AVISOS -->
-    <div id="modalAviso" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[60]">
-      <div class="flex items-center justify-center min-h-screen p-4">
+    <div id="modalAviso" class="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 hidden z-[60] backdrop-blur-sm">
+      <div class="flex items-center justify-center min-h-screen p-4 w-full h-full">
         <div class="bg-white rounded-xl w-full max-w-md md:max-w-lg shadow-lg">
           <div class="p-4 md:p-6 border-b border-gray-200 flex items-center justify-between">
             <h3 class="text-lg md:text-xl font-bold text-gray-800">Aviso</h3>
