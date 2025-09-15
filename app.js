@@ -1206,7 +1206,7 @@ async function finalizarDia() {
     mostrarProductosCategoria();
     mostrarProductosFinal();
 
-    alert(`✅ Día ${diaActual} finalizado y guardado en el historial. Los datos han sido limpiados para el nuevo día.`);
+    alert(`✅ Día ${diaActual} finalizado y guardado en el historial. Los datos serán limpiados para el nuevo día.`);
   } catch (error) {
     console.error("Error finalizando día:", error);
     alert("Error al finalizar el día. Intenta nuevamente.");
@@ -1482,7 +1482,7 @@ function generarResumenTexto() {
 
 function generarResumenResumido() {
   let fecha = new Date().toLocaleDateString();
-  let mensaje = `📊 RESUMEN DEL DÍA - ${fecha}\n`;
+  let mensaje = `RESUMEN DEL DÍA - ${fecha}\n`;
   mensaje += "-".repeat(40) + "\n";
 
   // Solo imprimir STOCK FINAL y LO USADO en el día
@@ -1504,7 +1504,7 @@ function generarResumenResumido() {
   }
 
   // Agregar faltantes del día al resumen resumido
-  mensaje += "\n⚠️ FALTANTES DEL DÍA:\n";
+  mensaje += "\nFALTANTES DEL DÍA:\n";
   if (faltantes.length === 0) {
     mensaje += "- No hay faltantes registrados\n";
   } else {
