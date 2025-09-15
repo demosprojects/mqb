@@ -28,6 +28,7 @@ let obsUIIniciada = false;
 let diaActual = new Date().toLocaleDateString();
 // Observaciones privadas (persisten y no están ligadas al día)
 let observacionesPrivadas = "";
+// Los límites ahora son individuales por producto, no por categoría
 
 // Datos por defecto para stock inicial - VACÍO para que el usuario cargue sus propios productos
 const stockInicial = [];
@@ -252,11 +253,17 @@ function renderListaProductos() {
     // Encontrar el índice real en el array original
     const indiceReal = stock.findIndex(p => p.id === producto.id);
     
+    const limiteTexto = producto.limite && producto.limite > 0 ? `Límite: ${producto.limite}` : 'Sin límite';
+    const limiteColor = producto.limite && producto.limite > 0 ? 'text-orange-600' : 'text-gray-400';
+    
     html += `
       <div class="bg-white border border-gray-200 rounded-lg p-3 flex justify-between items-center">
         <div class="flex-1">
-          <span class="font-medium text-gray-800">${producto.producto}</span>
-          <span class="text-sm text-gray-500 ml-2">(${producto.categoria} - ${producto.unidad})</span>
+          <div class="flex items-center gap-2">
+            <span class="font-medium text-gray-800">${producto.producto}</span>
+            <span class="text-xs ${limiteColor} bg-gray-100 px-2 py-1 rounded">${limiteTexto}</span>
+          </div>
+          <span class="text-sm text-gray-500">${producto.categoria} - ${producto.unidad}</span>
         </div>
         <div class="flex gap-2">
           <button onclick="editarProducto(${indiceReal})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">✏️</button>
@@ -301,7 +308,7 @@ function editarProducto(index) {
   // Crear modal de edición
   const modal = document.createElement('div');
   modal.id = 'modalEditarProducto';
-  modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+  modal.className = 'fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4 backdrop-blur-sm w-full h-full';
   modal.innerHTML = `
     <div class="bg-white rounded-xl max-w-md w-full p-6">
       <h3 class="text-lg font-bold text-gray-800 mb-4">✏️ Editar Producto</h3>
@@ -335,6 +342,13 @@ function editarProducto(index) {
             <option value="paquete">Paquete</option>
           </select>
         </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Límite mínimo</label>
+          <input type="number" id="editLimite" min="0" step="0.01" 
+                 placeholder="Ej: 5" 
+                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <p class="text-xs text-gray-500 mt-1">Cantidad mínima para generar faltante automático (0 = sin límite)</p>
+        </div>
         <div class="flex gap-3">
           <button type="submit" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium">
             💾 Guardar
@@ -354,12 +368,14 @@ function editarProducto(index) {
     const categoriaSelect = document.getElementById('editCategoria');
     const productoInput = document.getElementById('editProducto');
     const unidadSelect = document.getElementById('editUnidad');
+    const limiteInput = document.getElementById('editLimite');
     
-    if (categoriaSelect && productoInput && unidadSelect) {
+    if (categoriaSelect && productoInput && unidadSelect && limiteInput) {
       categoriaSelect.value = producto.categoria;
       productoInput.value = producto.producto;
       unidadSelect.value = producto.unidad;
-      console.log("Formulario llenado con datos:", { categoria: producto.categoria, producto: producto.producto, unidad: producto.unidad });
+      limiteInput.value = producto.limite || 0;
+      console.log("Formulario llenado con datos:", { categoria: producto.categoria, producto: producto.producto, unidad: producto.unidad, limite: producto.limite });
     } else {
       console.error("No se pudieron encontrar los elementos del formulario");
     }
@@ -393,11 +409,12 @@ async function actualizarProducto(index) {
     const nuevaCategoria = document.getElementById('editCategoria').value;
     const nuevoProducto = document.getElementById('editProducto').value;
     const nuevaUnidad = document.getElementById('editUnidad').value;
+    const nuevoLimite = parseFloat(document.getElementById('editLimite').value) || 0;
     
-    console.log("Datos a actualizar:", { nuevaCategoria, nuevoProducto, nuevaUnidad });
+    console.log("Datos a actualizar:", { nuevaCategoria, nuevoProducto, nuevaUnidad, nuevoLimite });
     
     if (!nuevaCategoria || !nuevoProducto || !nuevaUnidad) {
-      alert("Por favor completa todos los campos");
+      alert("Por favor completa todos los campos obligatorios");
       return;
     }
     
@@ -412,6 +429,7 @@ async function actualizarProducto(index) {
       categoria: nuevaCategoria,
       producto: nuevoProducto,
       unidad: nuevaUnidad,
+      limite: nuevoLimite,
       timestamp: new Date().toISOString()
     };
     
@@ -462,8 +480,20 @@ window.mostrarHistorialFecha = mostrarHistorialFecha;
 window.eliminarDiaHistorial = eliminarDiaHistorial;
 window.finalizarDia = finalizarDia;
 window.cerrarSesion = cerrarSesion;
+
+// Función de debug para probar la detección de faltantes
+window.debugFaltantes = function() {
+  console.log("=== DEBUG FALTANTES ===");
+  console.log("Stock:", stock);
+  console.log("Conteo Final:", conteoFinal);
+  console.log("Faltantes actuales:", faltantes);
+  
+  // Probar detección manual
+  detectarFaltantesAutomaticos().then(resultado => {
+    console.log("Resultado detección:", resultado);
+  });
+};
 // Nuevas funciones expuestas
-window.limpiarPendientesYFaltantesYVolver = limpiarPendientesYFaltantesYVolver;
 window.abrirModalObservacionesPrivadas = abrirModalObservacionesPrivadas;
 window.cerrarModalObservacionesPrivadas = cerrarModalObservacionesPrivadas;
 window.abrirModalHistorialTareas = abrirModalHistorialTareas;
@@ -657,6 +687,10 @@ async function agregarConteoFinal(producto, categoria, unidad) {
     renderConteoFinal();
     mostrarProductosFinal(); // Actualizar la vista
     alert(`✅ ${producto} final registrado: ${cantidad} ${unidad}`);
+    
+    // NUEVO: Detectar faltantes automáticamente después de agregar/actualizar cada producto
+    console.log("🔍 Detectando faltantes después de agregar/actualizar producto...");
+    await detectarFaltantesAutomaticos();
   } catch (error) {
     console.error("Error guardando conteo final:", error);
     alert("Error al guardar el conteo. Intenta nuevamente.");
@@ -681,6 +715,7 @@ formStock.addEventListener("submit", async (e) => {
       categoria: categoria.value,
       producto: producto.value,
       unidad: unidad.value,
+      limite: parseFloat(limite.value) || 0,
       timestamp: new Date().toISOString()
     };
 
@@ -797,11 +832,44 @@ async function eliminarConteoFinal(key) {
       await deleteDoc(doc(window.db, "conteoFinal", item.id));
     }
     conteoFinal.splice(index, 1);
+    
+    // CORRECCIÓN: Eliminar faltantes automáticos del producto eliminado
+    await eliminarFaltantesAutomaticosDelProducto(item.producto);
+    
     renderConteoFinal();
     mostrarProductosFinal();
   } catch (error) {
     console.error("Error eliminando conteo final:", error);
     alert("Error al eliminar el conteo. Intenta nuevamente.");
+  }
+}
+
+// Función auxiliar para eliminar faltantes automáticos de un producto específico
+async function eliminarFaltantesAutomaticosDelProducto(nombreProducto) {
+  try {
+    const faltantesDelProducto = faltantes.filter(f => 
+      f.producto === nombreProducto && 
+      f.automatico === true && 
+      f.descripcion.includes('Stock bajo')
+    );
+    
+    for (const faltante of faltantesDelProducto) {
+      if (faltante.id) {
+        await deleteDoc(doc(window.db, "faltantes", faltante.id));
+      }
+      // Remover del array local
+      const index = faltantes.findIndex(f => f.id === faltante.id);
+      if (index > -1) {
+        faltantes.splice(index, 1);
+      }
+      console.log(`✅ Faltante automático eliminado: ${nombreProducto} (producto eliminado del conteo)`);
+    }
+    
+    if (faltantesDelProducto.length > 0) {
+      renderFaltantes();
+    }
+  } catch (error) {
+    console.error(`Error eliminando faltantes automáticos para ${nombreProducto}:`, error);
   }
 }
 
@@ -900,14 +968,18 @@ function renderFaltantes() {
   faltantes.forEach((f, i) => {
     const descripcion = f.descripcion || f; // Compatibilidad con datos antiguos
     const completado = f.completado || false;
+    const esAutomatico = f.automatico || false;
     const estiloCompletado = completado ? "line-through text-gray-500 bg-gray-100" : "";
+    const estiloAutomatico = esAutomatico ? "border-orange-300 bg-orange-50" : "border-red-200 bg-red-50";
+    const iconoAutomatico = esAutomatico ? "🤖" : "⚠️";
     
     listaFaltantes.innerHTML += `
-      <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-3">
+      <div class="${estiloAutomatico} border rounded-lg p-4 mb-3">
         <div class="flex justify-between items-center">
           <div class="flex items-center">
-            <span class="text-red-600 mr-2">⚠️</span>
+            <span class="text-red-600 mr-2">${iconoAutomatico}</span>
             <div class="${estiloCompletado}">${descripcion}</div>
+            ${esAutomatico ? '<span class="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">AUTO</span>' : ''}
           </div>
           <div class="flex gap-2">
             <button onclick="marcarFaltanteCompletado(${i})" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
@@ -1085,12 +1157,21 @@ async function finalizarDia() {
   btnFinalizar.disabled = true;
 
   try {
+    // CORRECCIÓN: Completar conteo final con productos no editados del inicial
+    const conteoFinalCompleto = await completarConteoFinalConInicial();
+    
+    // Actualizar el array global conteoFinal con el conteo completo para la detección
+    conteoFinal = [...conteoFinalCompleto];
+    
+    // Detectar faltantes automáticamente con el conteo final completo
+    await detectarFaltantesAutomaticos();
+    
     // Crear registro del día
     const registroDia = {
       fecha: diaActual,
       timestamp: new Date().toISOString(),
       conteoInicial: [...conteoInicial],
-      conteoFinal: [...conteoFinal],
+      conteoFinal: [...conteoFinalCompleto],
       faltantes: [...faltantes],
       pendientes: [...pendientes],
       tareas: [...tareas],
@@ -1198,10 +1279,55 @@ async function limpiarDatosDelDia(opts = { preservarInicial: false }) {
   }
 }
 
-// Migra todo el conteo final actual como conteo inicial del próximo día
+// CORRECCIÓN: Completar conteo final con productos del conteo inicial que no fueron editados
+async function completarConteoFinalConInicial() {
+  try {
+    console.log("🔧 Completando conteo final...");
+    console.log("Conteo inicial:", conteoInicial);
+    console.log("Conteo final actual:", conteoFinal);
+    
+    const conteoFinalCompleto = [...conteoFinal];
+    
+    // Para cada producto del conteo inicial, verificar si existe en el conteo final
+    for (const itemInicial of conteoInicial) {
+      const existeEnFinal = conteoFinal.find(cf => cf.producto === itemInicial.producto);
+      
+      if (!existeEnFinal) {
+        // Si no existe en el final, agregarlo con la misma cantidad (asumiendo que no se usó)
+        const nuevoItemFinal = {
+          categoria: itemInicial.categoria,
+          producto: itemInicial.producto,
+          unidad: itemInicial.unidad,
+          cantidad: itemInicial.cantidad, // Misma cantidad que el inicial
+          observacion: "No editado - cantidad inicial mantenida",
+          fecha: new Date().toLocaleDateString(),
+          timestamp: new Date().toISOString()
+        };
+        
+        // NO agregar a Firebase aquí, solo al array local para el historial
+        conteoFinalCompleto.push({ ...nuevoItemFinal });
+        
+        console.log(`✅ Agregado al conteo final (no editado): ${itemInicial.producto} - ${itemInicial.cantidad} ${itemInicial.unidad}`);
+      } else {
+        console.log(`ℹ️ Producto ya existe en conteo final: ${itemInicial.producto}`);
+      }
+    }
+    
+    console.log("Conteo final completo:", conteoFinalCompleto);
+    return conteoFinalCompleto;
+  } catch (error) {
+    console.error("Error completando conteo final:", error);
+    return conteoFinal; // Devolver el conteo final original si hay error
+  }
+}
+
+// Migra el conteo como inicial del próximo día usando la lógica correcta
 async function arrastrarFinalComoInicialParaManiana() {
   try {
-    if (!conteoFinal || conteoFinal.length === 0) return false;
+    if (!conteoInicial || conteoInicial.length === 0) return false;
+    
+    // Guardar una copia del conteo inicial antes de vaciarlo
+    const conteoInicialOriginal = [...conteoInicial];
     
     // Importar writeBatch para operaciones en lote
     const { writeBatch } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
@@ -1218,16 +1344,36 @@ async function arrastrarFinalComoInicialParaManiana() {
     await batch.commit();
     conteoInicial = [];
 
-    // Crear nuevos documentos en conteoInicial basados en conteoFinal usando batch
+    // Crear nuevos documentos en conteoInicial usando la lógica correcta
     const newBatch = writeBatch(window.db);
     const nuevosItems = [];
     
-    for (const item of conteoFinal) {
+    // Recorrer todos los productos del conteo inicial original
+    for (const itemInicial of conteoInicialOriginal) {
+      // Buscar si tiene conteo final
+      const itemFinal = conteoFinal.find(cf => cf.producto === itemInicial.producto);
+      
+      let cantidadParaManiana;
+      let observacion = "";
+      
+      if (itemFinal) {
+        // Si tiene conteo final, usar esa cantidad
+        cantidadParaManiana = Number(itemFinal.cantidad) || 0;
+        observacion = "Actualizado desde conteo final";
+        console.log(`✅ ${itemInicial.producto}: Usando conteo final (${cantidadParaManiana})`);
+      } else {
+        // Si no tiene conteo final, arrastrar la cantidad inicial
+        cantidadParaManiana = Number(itemInicial.cantidad) || 0;
+        observacion = "No editado - cantidad inicial mantenida";
+        console.log(`✅ ${itemInicial.producto}: Arrastrando cantidad inicial (${cantidadParaManiana})`);
+      }
+      
       const datos = {
-        categoria: item.categoria,
-        producto: item.producto,
-        unidad: item.unidad,
-        cantidad: Number(item.cantidad) || 0,
+        categoria: itemInicial.categoria,
+        producto: itemInicial.producto,
+        unidad: itemInicial.unidad,
+        cantidad: cantidadParaManiana,
+        observacion: observacion,
         fecha: new Date().toLocaleDateString(),
         timestamp: new Date().toISOString()
       };
@@ -1243,9 +1389,11 @@ async function arrastrarFinalComoInicialParaManiana() {
     // Ejecutar todas las creaciones en una sola operación
     await newBatch.commit();
     conteoInicial = nuevosItems;
+    
+    console.log(`✅ Migración completada: ${nuevosItems.length} productos arrastrados para mañana`);
     return true;
   } catch (e) {
-    console.error('Error migrando final -> inicial:', e);
+    console.error('Error migrando conteo para mañana:', e);
     return false;
   }
 }
@@ -1668,13 +1816,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   
-  // Botón eliminar pendientes/faltantes y volver
-  const btnEliminarPendFaltYVolver = document.getElementById('btnEliminarPendFaltYVolver');
-  if (btnEliminarPendFaltYVolver) {
-    btnEliminarPendFaltYVolver.addEventListener('click', async () => {
-      await limpiarPendientesYFaltantesYVolver();
-    });
-  }
 
   // Observaciones privadas
   const btnObservacionesPrivadas = document.getElementById('btnObservacionesPrivadas');
@@ -1687,6 +1828,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCerrarObservacionesPrivadas.addEventListener('click', cerrarModalObservacionesPrivadas);
     modalObservacionesPrivadas.addEventListener('click', (e) => { if (e.target === modalObservacionesPrivadas) cerrarModalObservacionesPrivadas(); });
   }
+
 
   // Botón Subir (scroll-to-top)
   const btnScrollTop = document.getElementById('btnScrollTop');
@@ -1904,6 +2046,129 @@ async function guardarEmpleados() {
   }
 }
 
+
+// Función para detectar faltantes automáticamente basados en límites individuales por producto
+async function detectarFaltantesAutomaticos(conteoFinalCompleto = null) {
+  try {
+    const faltantesDetectados = [];
+    const faltantesAEliminar = [];
+    
+    // Usar el conteo final completo si se proporciona, sino usar el global
+    const conteoAUsar = conteoFinalCompleto || conteoFinal;
+    
+    console.log(`🔍 Detectando faltantes en ${conteoAUsar.length} productos del conteo final`);
+    
+    // PASO 1: Verificar cada producto del conteo final contra su límite individual
+    for (const item of conteoAUsar) {
+      // Buscar el producto en el catálogo para obtener su límite
+      const productoEnStock = stock.find(p => p.producto === item.producto);
+      
+      console.log(`🔍 Verificando ${item.producto}: cantidad=${item.cantidad}, límite=${productoEnStock?.limite || 'sin límite'}`);
+      
+      if (productoEnStock && productoEnStock.limite && productoEnStock.limite > 0) {
+        const cantidadActual = Number(item.cantidad) || 0;
+        const limiteProducto = Number(productoEnStock.limite);
+        
+        // Buscar si ya existe un faltante automático para este producto
+        const faltanteExistente = faltantes.find(f => 
+          f.producto === item.producto && 
+          f.automatico === true && 
+          f.descripcion.includes('Stock bajo')
+        );
+        
+        if (cantidadActual < limiteProducto) {
+          console.log(`⚠️ FALTANTE DETECTADO: ${item.producto} (${cantidadActual}/${limiteProducto})`);
+          // Stock bajo: crear o mantener faltante
+          if (!faltanteExistente) {
+            const faltante = {
+              descripcion: `⚠️ ${item.producto}: Stock bajo (${cantidadActual}/${limiteProducto} ${item.unidad})`,
+              categoria: item.categoria,
+              producto: item.producto,
+              cantidadActual: cantidadActual,
+              limite: limiteProducto,
+              unidad: item.unidad,
+              automatico: true,
+              fecha: new Date().toLocaleDateString(),
+              timestamp: new Date().toISOString()
+            };
+            faltantesDetectados.push(faltante);
+            console.log(`✅ Faltante agregado: ${faltante.descripcion}`);
+          } else {
+            // Actualizar faltante existente si la cantidad cambió
+            if (faltanteExistente.cantidadActual !== cantidadActual) {
+              faltanteExistente.descripcion = `⚠️ ${item.producto}: Stock bajo (${cantidadActual}/${limiteProducto} ${item.unidad})`;
+              faltanteExistente.cantidadActual = cantidadActual;
+              // Actualizar en Firebase
+              if (faltanteExistente.id) {
+                await updateDoc(doc(window.db, "faltantes", faltanteExistente.id), {
+                  descripcion: faltanteExistente.descripcion,
+                  cantidadActual: cantidadActual,
+                  timestamp: new Date().toISOString()
+                });
+              }
+            }
+          }
+        } else {
+          // Stock por encima del límite: eliminar faltante automático si existe
+          if (faltanteExistente) {
+            faltantesAEliminar.push(faltanteExistente);
+          }
+        }
+      }
+    }
+    
+    // PASO 1.5: Verificar faltantes automáticos que ya no tienen producto en conteo final
+    // (productos que se agotaron completamente o se eliminaron del conteo)
+    const productosEnConteoFinal = conteoAUsar.map(item => item.producto);
+    const faltantesObsoletos = faltantes.filter(f => 
+      f.automatico === true && 
+      f.descripcion.includes('Stock bajo') &&
+      !productosEnConteoFinal.includes(f.producto)
+    );
+    
+    // Agregar faltantes obsoletos a la lista de eliminación
+    faltantesAEliminar.push(...faltantesObsoletos);
+    
+    // PASO 2: Eliminar faltantes automáticos que ya no son necesarios
+    for (const faltante of faltantesAEliminar) {
+      try {
+        if (faltante.id) {
+          await deleteDoc(doc(window.db, "faltantes", faltante.id));
+        }
+        // Remover del array local
+        const index = faltantes.findIndex(f => f.id === faltante.id);
+        if (index > -1) {
+          faltantes.splice(index, 1);
+        }
+        console.log(`✅ Faltante automático eliminado: ${faltante.producto} (stock recuperado)`);
+      } catch (error) {
+        console.error(`Error eliminando faltante automático para ${faltante.producto}:`, error);
+      }
+    }
+    
+    // PASO 3: Agregar nuevos faltantes detectados a Firebase y array local
+    for (const faltante of faltantesDetectados) {
+      const docRef = await addDoc(collection(window.db, "faltantes"), faltante);
+      faltantes.push({ id: docRef.id, ...faltante });
+    }
+    
+    // Actualizar la interfaz si hubo cambios
+    if (faltantesDetectados.length > 0 || faltantesAEliminar.length > 0) {
+      renderFaltantes();
+      console.log(`✅ Procesados: ${faltantesDetectados.length} faltantes nuevos, ${faltantesAEliminar.length} eliminados`);
+    }
+    
+    return {
+      nuevos: faltantesDetectados,
+      eliminados: faltantesAEliminar
+    };
+  } catch (error) {
+    console.error("Error detectando faltantes automáticos:", error);
+    return { nuevos: [], eliminados: [] };
+  }
+}
+
+
 async function agregarEmpleado(nombre) {
   empleados.push({ nombre, nota: '' });
   await guardarEmpleados();
@@ -1927,31 +2192,6 @@ window.guardarNotaEmpleado = async function(i) {
   if (estado) estado.textContent = 'Notas guardadas ✓';
 };
 
-async function limpiarPendientesYFaltantesYVolver() {
-  try {
-    if (!confirm('¿Eliminar todos los pendientes y faltantes y volver a la página anterior?')) return;
-    // Borrar faltantes
-    for (const item of faltantes) {
-      if (item.id) {
-        await deleteDoc(doc(window.db, 'faltantes', item.id));
-      }
-    }
-    // Borrar pendientes
-    for (const item of pendientes) {
-      if (item.id) {
-        await deleteDoc(doc(window.db, 'pendientes', item.id));
-      }
-    }
-    faltantes = [];
-    pendientes = [];
-    renderFaltantes();
-    renderPendientes();
-    history.back();
-  } catch (e) {
-    console.error('Error limpiando pendientes/faltantes:', e);
-    alert('Error al limpiar pendientes/faltantes. Intenta nuevamente.');
-  }
-}
 
 // === VERIFICACIÓN DE AUTENTICACIÓN ===
 function verificarAutenticacion() {
