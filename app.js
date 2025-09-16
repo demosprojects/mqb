@@ -133,7 +133,7 @@ async function cargarTodosLosDatos() {
 }
 
 function cargarDesdeLocalStorage() {
-  console.log("Cargando datos desde localStorage como fallback...");
+  console.log("⚠️ Cargando datos desde localStorage como fallback (solo datos del día)...");
   stock = JSON.parse(localStorage.getItem("stock")) || [];
   conteoInicial = JSON.parse(localStorage.getItem("conteoInicial")) || [];
   conteoFinal = JSON.parse(localStorage.getItem("conteoFinal")) || [];
@@ -141,6 +141,10 @@ function cargarDesdeLocalStorage() {
   pendientes = JSON.parse(localStorage.getItem("pendientes")) || [];
   tareas = JSON.parse(localStorage.getItem("tareas")) || [];
   historial = JSON.parse(localStorage.getItem("historial")) || [];
+  
+  // NOTA: Observaciones privadas y empleados se cargan por separado
+  // para priorizar Firebase y migrar automáticamente desde localStorage
+  
   actualizarInterfaz();
 }
 
@@ -1822,11 +1826,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalObservacionesPrivadas = document.getElementById('modalObservacionesPrivadas');
   const cerrarModalObservacionesPrivadasBtn = document.getElementById('cerrarModalObservacionesPrivadas');
   const btnCerrarObservacionesPrivadas = document.getElementById('btnCerrarObservacionesPrivadas');
+  const btnGuardarObservacionesPrivadas = document.getElementById('btnGuardarObservacionesPrivadas');
+  
   if (btnObservacionesPrivadas && modalObservacionesPrivadas) {
     btnObservacionesPrivadas.addEventListener('click', abrirModalObservacionesPrivadas);
     cerrarModalObservacionesPrivadasBtn.addEventListener('click', cerrarModalObservacionesPrivadas);
     btnCerrarObservacionesPrivadas.addEventListener('click', cerrarModalObservacionesPrivadas);
     modalObservacionesPrivadas.addEventListener('click', (e) => { if (e.target === modalObservacionesPrivadas) cerrarModalObservacionesPrivadas(); });
+  }
+  
+  if (btnGuardarObservacionesPrivadas) {
+    btnGuardarObservacionesPrivadas.addEventListener('click', async () => {
+      const textarea = document.getElementById('observacionesPrivadasGlobales');
+      if (textarea) {
+        observacionesPrivadas = textarea.value;
+        await guardarObservacionesPrivadas();
+        const estado = document.getElementById('estadoObservacionesPrivadas');
+        if (estado) estado.textContent = 'Observaciones guardadas ✓';
+      }
+    });
   }
 
 
@@ -1912,6 +1930,14 @@ function inicializarObservacionesPrivadasUI() {
 function abrirModalObservacionesPrivadas() {
   const modal = document.getElementById('modalObservacionesPrivadas');
   if (modal) {
+    // Cargar observaciones privadas globales en el textarea
+    const textareaGlobal = document.getElementById('observacionesPrivadasGlobales');
+    if (textareaGlobal) {
+      console.log('🔍 Valor actual de observacionesPrivadas:', observacionesPrivadas);
+      textareaGlobal.value = observacionesPrivadas || '';
+      console.log('📝 Textarea cargado con valor:', textareaGlobal.value);
+    }
+    
     renderEmpleadosLista();
     renderEmpleadoDetalle(selectedEmpleadoIndex);
     modal.classList.remove('hidden');
@@ -1925,17 +1951,38 @@ function cerrarModalObservacionesPrivadas() {
 
 async function cargarObservacionesPrivadas() {
   try {
+    // PRIORIDAD 1: Cargar desde Firebase
     const docRef = doc(window.db, 'observaciones_privadas', 'global');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
       observacionesPrivadas = data.texto || '';
+      console.log('✅ Observaciones privadas cargadas desde Firebase:', observacionesPrivadas);
     } else {
-      observacionesPrivadas = '';
+      // PRIORIDAD 2: Si no hay datos en Firebase, verificar localStorage y migrar
+      const raw = localStorage.getItem('observaciones_privadas');
+      if (raw && raw.trim()) {
+        observacionesPrivadas = raw;
+        console.log('📦 Observaciones privadas encontradas en localStorage, migrando a Firebase:', observacionesPrivadas);
+        
+        // Migrar a Firebase
+        await guardarObservacionesPrivadas();
+        console.log('💾 Observaciones privadas migradas a Firebase exitosamente');
+        
+        // Limpiar localStorage después de migrar
+        localStorage.removeItem('observaciones_privadas');
+        console.log('🧹 Datos de localStorage limpiados después de migración');
+      } else {
+        observacionesPrivadas = '';
+        console.log('🆕 No hay observaciones privadas, inicializando vacío');
+      }
     }
   } catch (e) {
-    console.error('Error cargando observaciones privadas:', e);
+    console.error('❌ Error cargando observaciones privadas desde Firebase:', e);
+    
+    // FALLBACK: Solo usar localStorage si Firebase falla completamente
     observacionesPrivadas = localStorage.getItem('observaciones_privadas') || '';
+    console.log('⚠️ Usando localStorage como fallback para observaciones privadas:', observacionesPrivadas);
   }
 }
 
@@ -1943,11 +1990,13 @@ async function guardarObservacionesPrivadas() {
   try {
     const docRef = doc(window.db, 'observaciones_privadas', 'global');
     await setDoc(docRef, { texto: observacionesPrivadas, timestamp: new Date().toISOString() });
-    localStorage.setItem('observaciones_privadas', observacionesPrivadas || '');
+    console.log('✅ Observaciones privadas guardadas en Firebase');
   } catch (e) {
-    console.error('Error guardando observaciones privadas:', e);
+    console.error('❌ Error guardando observaciones privadas en Firebase:', e);
+    // Fallback a localStorage solo si Firebase falla
     localStorage.setItem('observaciones_privadas', observacionesPrivadas || '');
-    // No relanzar para no romper la UI
+    console.log('⚠️ Guardado en localStorage como fallback');
+    throw e; // Relanzar para que la UI sepa que hubo un error
   }
 }
 
@@ -2009,29 +2058,121 @@ window.seleccionarEmpleado = function(i) {
 };
 
 async function cargarEmpleados() {
+  let datosRecuperados = false;
+  let empleadosConNotas = [];
+  
   try {
+    // PRIORIDAD 1: Cargar desde Firebase
     const docRef = doc(window.db, 'observaciones_privadas', 'empleados');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
       empleados = Array.isArray(data.lista) ? data.lista : [];
+      console.log('✅ Empleados cargados desde Firebase:', empleados);
     } else {
-      // Inicial con tres empleados solicitados
-      empleados = [
-        { nombre: 'Camila', nota: '' },
-        { nombre: 'Matias', nota: '' },
-        { nombre: 'Denis', nota: '' }
-      ];
-      await guardarEmpleados();
+      // PRIORIDAD 2: Si no hay datos en Firebase, verificar localStorage y migrar
+      const raw = localStorage.getItem('empleados_observaciones');
+      if (raw) {
+        try {
+          const datosLocalStorage = JSON.parse(raw);
+          console.log('📦 Datos encontrados en localStorage, migrando a Firebase:', datosLocalStorage);
+          
+          // Crear empleados base
+          const empleadosBase = [
+            { nombre: 'Camila', nota: '' },
+            { nombre: 'Matias', nota: '' },
+            { nombre: 'Denis', nota: '' }
+          ];
+          
+          // Fusionar datos de localStorage con empleados base
+          empleados = empleadosBase.map(empBase => {
+            const empEncontrado = datosLocalStorage.find(emp => 
+              emp.nombre && emp.nombre.toLowerCase() === empBase.nombre.toLowerCase()
+            );
+            if (empEncontrado && empEncontrado.nota && empEncontrado.nota.trim()) {
+              datosRecuperados = true;
+              empleadosConNotas.push(empEncontrado.nombre);
+            }
+            return empEncontrado ? empEncontrado : empBase;
+          });
+          
+          console.log('🔄 Empleados fusionados:', empleados);
+          
+          // Guardar los datos fusionados en Firebase
+          await guardarEmpleados();
+          console.log('💾 Datos migrados a Firebase exitosamente');
+          
+          // Limpiar localStorage después de migrar
+          localStorage.removeItem('empleados_observaciones');
+          console.log('🧹 Datos de localStorage limpiados después de migración');
+          
+        } catch (parseError) {
+          console.error('Error parseando empleados desde localStorage:', parseError);
+          empleados = [
+            { nombre: 'Camila', nota: '' },
+            { nombre: 'Matias', nota: '' },
+            { nombre: 'Denis', nota: '' }
+          ];
+          await guardarEmpleados();
+        }
+      } else {
+        // PRIORIDAD 3: Crear empleados nuevos si no hay datos en ningún lado
+        empleados = [
+          { nombre: 'Camila', nota: '' },
+          { nombre: 'Matias', nota: '' },
+          { nombre: 'Denis', nota: '' }
+        ];
+        await guardarEmpleados();
+        console.log('🆕 Empleados nuevos creados en Firebase');
+      }
     }
   } catch (e) {
-    console.error('Error cargando empleados:', e);
+    console.error('❌ Error cargando empleados desde Firebase:', e);
+    
+    // FALLBACK: Solo usar localStorage si Firebase falla completamente
     const raw = localStorage.getItem('empleados_observaciones');
-    empleados = raw ? JSON.parse(raw) : [
-      { nombre: 'Camila', nota: '' },
-      { nombre: 'Matias', nota: '' },
-      { nombre: 'Denis', nota: '' }
-    ];
+    if (raw) {
+      try {
+        const datosLocalStorage = JSON.parse(raw);
+        console.log('⚠️ Usando localStorage como fallback:', datosLocalStorage);
+        
+        const empleadosBase = [
+          { nombre: 'Camila', nota: '' },
+          { nombre: 'Matias', nota: '' },
+          { nombre: 'Denis', nota: '' }
+        ];
+        
+        empleados = empleadosBase.map(empBase => {
+          const empEncontrado = datosLocalStorage.find(emp => 
+            emp.nombre && emp.nombre.toLowerCase() === empBase.nombre.toLowerCase()
+          );
+          if (empEncontrado && empEncontrado.nota && empEncontrado.nota.trim()) {
+            datosRecuperados = true;
+            empleadosConNotas.push(empEncontrado.nombre);
+          }
+          return empEncontrado ? empEncontrado : empBase;
+        });
+        
+        console.log('🔄 Empleados fusionados (fallback):', empleados);
+        
+      } catch (parseError) {
+        console.error('Error parseando empleados desde localStorage:', parseError);
+        empleados = [];
+      }
+    } else {
+      empleados = [];
+    }
+  }
+  
+  // Mostrar mensaje si se recuperaron datos
+  if (datosRecuperados && empleadosConNotas.length > 0) {
+    setTimeout(() => {
+      const mensaje = `✅ Datos recuperados y migrados a Firebase para: ${empleadosConNotas.join(', ')}`;
+      console.log(mensaje);
+      if (window.mostrarAviso) {
+        window.mostrarAviso(mensaje);
+      }
+    }, 1000);
   }
 }
 
@@ -2039,10 +2180,13 @@ async function guardarEmpleados() {
   try {
     const docRef = doc(window.db, 'observaciones_privadas', 'empleados');
     await setDoc(docRef, { lista: empleados, timestamp: new Date().toISOString() });
-    localStorage.setItem('empleados_observaciones', JSON.stringify(empleados));
+    console.log('✅ Empleados guardados en Firebase');
   } catch (e) {
-    console.error('Error guardando empleados:', e);
+    console.error('❌ Error guardando empleados en Firebase:', e);
+    // Fallback a localStorage solo si Firebase falla
     localStorage.setItem('empleados_observaciones', JSON.stringify(empleados));
+    console.log('⚠️ Guardado en localStorage como fallback');
+    throw e; // Relanzar para que la UI sepa que hubo un error
   }
 }
 
@@ -2191,6 +2335,24 @@ window.guardarNotaEmpleado = async function(i) {
   const estado = document.getElementById('estadoObservacionesPrivadas');
   if (estado) estado.textContent = 'Notas guardadas ✓';
 };
+
+// Función para limpiar observaciones privadas si es necesario
+window.limpiarObservacionesPrivadas = async function() {
+  if (confirm('¿Estás seguro de que quieres limpiar las observaciones privadas? Esta acción no se puede deshacer.')) {
+    observacionesPrivadas = '';
+    await guardarObservacionesPrivadas();
+    
+    // Limpiar el textarea si el modal está abierto
+    const textareaGlobal = document.getElementById('observacionesPrivadasGlobales');
+    if (textareaGlobal) {
+      textareaGlobal.value = '';
+    }
+    
+    console.log('🧹 Observaciones privadas limpiadas');
+    alert('✅ Observaciones privadas limpiadas');
+  }
+};
+
 
 
 // === VERIFICACIÓN DE AUTENTICACIÓN ===
